@@ -2,16 +2,25 @@
 
 > **Warning**: This project uses Google's internal API. Use at your own risk.
 
-OpenAI-compatible proxy for Google's Antigravity API (Gemini/Claude via Google Cloud).
+OpenAI & Anthropic compatible proxy for Google's Antigravity API.
 
 ## Setup
 
 ```bash
 npm install
 cp .env.example .env
-# Edit .env with your credentials
 npm run start:dev
 ```
+
+Visit `http://localhost:3000/oauth/authorize` to authenticate with Google.
+
+## Endpoints
+
+| Endpoint                    | Format    |
+| --------------------------- | --------- |
+| `POST /v1/chat/completions` | OpenAI    |
+| `POST /v1/messages`         | Anthropic |
+| `GET /v1/models`            | OpenAI    |
 
 ## Models
 
