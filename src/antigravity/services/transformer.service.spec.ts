@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { TransformerService, StreamAccumulator } from './transformer.service';
+import { TransformerService } from './transformer.service';
 import { ChatCompletionRequestDto } from '../dto';
-import { AntigravityResponse } from '../interfaces/antigravity-response.interface';
+import {
+  AntigravityResponse,
+  AntigravityStreamChunk,
+} from '../interfaces/antigravity-response.interface';
 
 describe('TransformerService', () => {
   let service: TransformerService;
@@ -205,10 +208,10 @@ describe('TransformerService', () => {
   describe('transformStreamChunk', () => {
     it('should return null for chunk without candidates', () => {
       const accumulator = service.createStreamAccumulator();
-      const chunk = { response: {} };
+      const chunk: AntigravityStreamChunk = { response: {} };
 
       const result = service.transformStreamChunk(
-        chunk as any,
+        chunk,
         'model',
         'req-id',
         true,
@@ -220,7 +223,7 @@ describe('TransformerService', () => {
 
     it('should include role in first chunk', () => {
       const accumulator = service.createStreamAccumulator();
-      const chunk = {
+      const chunk: AntigravityStreamChunk = {
         response: {
           candidates: [
             {
@@ -231,7 +234,7 @@ describe('TransformerService', () => {
       };
 
       const result = service.transformStreamChunk(
-        chunk as any,
+        chunk,
         'model',
         'req-id',
         true,

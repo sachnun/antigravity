@@ -3,11 +3,11 @@ import { HttpException, HttpStatus } from '@nestjs/common';
 import { AntigravityService } from './antigravity.service';
 import { AuthService } from './services/auth.service';
 import { TransformerService } from './services/transformer.service';
+import { AnthropicTransformerService } from './services/anthropic-transformer.service';
 import { ChatCompletionRequestDto } from './dto';
 
 describe('AntigravityService', () => {
   let service: AntigravityService;
-  let authService: AuthService;
 
   const mockAuthService = {
     hasCredentials: jest.fn(),
@@ -24,6 +24,14 @@ describe('AntigravityService', () => {
     createFinalChunk: jest.fn(),
   };
 
+  const mockAnthropicTransformerService = {
+    transformRequest: jest.fn(),
+    transformResponse: jest.fn(),
+    createStreamAccumulator: jest.fn(),
+    transformStreamChunk: jest.fn(),
+    createFinalEvents: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -36,11 +44,14 @@ describe('AntigravityService', () => {
           provide: TransformerService,
           useValue: mockTransformerService,
         },
+        {
+          provide: AnthropicTransformerService,
+          useValue: mockAnthropicTransformerService,
+        },
       ],
     }).compile();
 
     service = module.get<AntigravityService>(AntigravityService);
-    authService = module.get<AuthService>(AuthService);
 
     jest.clearAllMocks();
   });
@@ -85,9 +96,11 @@ describe('AntigravityService', () => {
 
       try {
         await service.chatCompletion(mockDto);
-      } catch {}
+      } catch {
+        // Expected to throw
+      }
 
-      expect(authService.hasCredentials).toHaveBeenCalled();
+      expect(mockAuthService.hasCredentials).toHaveBeenCalled();
     });
   });
 

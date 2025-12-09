@@ -4,6 +4,33 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 
+interface HealthResponse {
+  status: string;
+  timestamp: string;
+}
+
+interface ModelResponse {
+  id: string;
+  object: string;
+  created: number;
+  owned_by: string;
+}
+
+interface ModelsListResponse {
+  object: string;
+  data: ModelResponse[];
+}
+
+interface OAuthStatusResponse {
+  authUrl: string;
+  callbackUrl: string;
+  instructions: string;
+}
+
+interface ErrorResponse {
+  message: string;
+}
+
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
 
@@ -25,8 +52,9 @@ describe('AppController (e2e)', () => {
       .get('/')
       .expect(200)
       .expect((res) => {
-        expect(res.body.status).toBe('ok');
-        expect(res.body.timestamp).toBeDefined();
+        const body = res.body as HealthResponse;
+        expect(body.status).toBe('ok');
+        expect(body.timestamp).toBeDefined();
       });
   });
 });
@@ -58,14 +86,15 @@ describe('AntigravityController (e2e)', () => {
         .set('Authorization', 'Bearer test-api-key')
         .expect(200)
         .expect((res) => {
-          expect(res.body).toHaveProperty('object', 'list');
-          expect(res.body).toHaveProperty('data');
-          expect(Array.isArray(res.body.data)).toBe(true);
-          expect(res.body.data.length).toBeGreaterThan(0);
-          expect(res.body.data[0]).toHaveProperty('id');
-          expect(res.body.data[0]).toHaveProperty('object', 'model');
-          expect(res.body.data[0]).toHaveProperty('created');
-          expect(res.body.data[0]).toHaveProperty('owned_by');
+          const body = res.body as ModelsListResponse;
+          expect(body).toHaveProperty('object', 'list');
+          expect(body).toHaveProperty('data');
+          expect(Array.isArray(body.data)).toBe(true);
+          expect(body.data.length).toBeGreaterThan(0);
+          expect(body.data[0]).toHaveProperty('id');
+          expect(body.data[0]).toHaveProperty('object', 'model');
+          expect(body.data[0]).toHaveProperty('created');
+          expect(body.data[0]).toHaveProperty('owned_by');
         });
     });
   });
@@ -126,11 +155,12 @@ describe('OAuthController (e2e)', () => {
         .get('/oauth/status')
         .expect(200)
         .expect((res) => {
-          expect(res.body).toHaveProperty('authUrl');
-          expect(res.body).toHaveProperty('callbackUrl');
-          expect(res.body).toHaveProperty('instructions');
-          expect(res.body.authUrl).toContain('accounts.google.com');
-          expect(res.body.callbackUrl).toContain('/oauth/callback');
+          const body = res.body as OAuthStatusResponse;
+          expect(body).toHaveProperty('authUrl');
+          expect(body).toHaveProperty('callbackUrl');
+          expect(body).toHaveProperty('instructions');
+          expect(body.authUrl).toContain('accounts.google.com');
+          expect(body.callbackUrl).toContain('/oauth/callback');
         });
     });
   });
@@ -155,7 +185,8 @@ describe('OAuthController (e2e)', () => {
         .get('/oauth/callback')
         .expect(400)
         .expect((res) => {
-          expect(res.body.message).toBe('Missing authorization code');
+          const body = res.body as ErrorResponse;
+          expect(body.message).toBe('Missing authorization code');
         });
     });
 

@@ -4,7 +4,6 @@ import { AuthService } from './auth.service';
 
 describe('AuthService', () => {
   let service: AuthService;
-  let configService: ConfigService;
 
   const mockConfigService = {
     get: jest.fn((key: string) => {
@@ -35,7 +34,6 @@ describe('AuthService', () => {
     }).compile();
 
     service = module.get<AuthService>(AuthService);
-    configService = module.get<ConfigService>(ConfigService);
   });
 
   it('should be defined', () => {

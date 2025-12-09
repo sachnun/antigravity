@@ -16,8 +16,9 @@ describe('OAuthController', () => {
     exchangeCodeForTokens: jest.fn(),
   };
 
+  const mockRedirect = jest.fn();
   const mockResponse = {
-    redirect: jest.fn(),
+    redirect: mockRedirect,
     status: jest.fn().mockReturnThis(),
     send: jest.fn(),
   } as unknown as Response;
@@ -46,7 +47,7 @@ describe('OAuthController', () => {
       controller.authorize(mockResponse);
 
       expect(mockOAuthService.getAuthorizationUrl).toHaveBeenCalled();
-      expect(mockResponse.redirect).toHaveBeenCalledWith(
+      expect(mockRedirect).toHaveBeenCalledWith(
         'https://accounts.google.com/o/oauth2/auth',
       );
     });
