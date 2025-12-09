@@ -14,6 +14,71 @@ export class ApiKeyGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
+    const isAnthropicEndpoint = request.path === '/v1/messages';
+
+    const token = isAnthropicEndpoint
+      ? this.extractAnthropicKey(request)
+      : this.extractOpenAIKey(request);
+
+    const apiKey = this.configService.get<string>('proxyApiKey');
+
+    if (!apiKey) {
+      return true;
+    }
+
+    if (token !== apiKey) {
+      const maskedKey =
+        token.length > 8 ? `${token.slice(0, 4)}...${token.slice(-4)}` : '****';
+
+      if (isAnthropicEndpoint) {
+        throw new HttpException(
+          {
+            type: 'error',
+            error: {
+              type: 'authentication_error',
+              message: `Invalid API key provided: ${maskedKey}`,
+            },
+          },
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      throw new HttpException(
+        {
+          error: {
+            message: `Incorrect API key provided: ${maskedKey}. You can find your API key in your settings.`,
+            type: 'authentication_error',
+            param: null,
+            code: 'invalid_api_key',
+          },
+        },
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+
+    return true;
+  }
+
+  private extractAnthropicKey(request: Request): string {
+    const xApiKey = request.headers['x-api-key'];
+
+    if (!xApiKey || typeof xApiKey !== 'string') {
+      throw new HttpException(
+        {
+          type: 'error',
+          error: {
+            type: 'authentication_error',
+            message: 'Missing required header: x-api-key',
+          },
+        },
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+
+    return xApiKey;
+  }
+
+  private extractOpenAIKey(request: Request): string {
     const authHeader = request.headers.authorization;
 
     if (!authHeader) {
@@ -48,28 +113,6 @@ export class ApiKeyGuard implements CanActivate {
       );
     }
 
-    const apiKey = this.configService.get<string>('proxyApiKey');
-
-    if (!apiKey) {
-      return true;
-    }
-
-    if (token !== apiKey) {
-      const maskedKey =
-        token.length > 8 ? `${token.slice(0, 4)}...${token.slice(-4)}` : '****';
-      throw new HttpException(
-        {
-          error: {
-            message: `Incorrect API key provided: ${maskedKey}. You can find your API key in your settings.`,
-            type: 'authentication_error',
-            param: null,
-            code: 'invalid_api_key',
-          },
-        },
-        HttpStatus.UNAUTHORIZED,
-      );
-    }
-
-    return true;
+    return token;
   }
 }
