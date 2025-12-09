@@ -139,8 +139,8 @@ export class AnthropicTransformerService {
       parts.push({ text: content });
     } else if (Array.isArray(content)) {
       for (const block of content) {
-        if (block.type === 'text') {
-          parts.push({ text: block.text });
+        if (block.type === 'text' && 'text' in block) {
+          parts.push({ text: (block as { type: 'text'; text: string }).text });
         } else if (block.type === 'image') {
           const src = block.source;
           if (src.type === 'base64') {

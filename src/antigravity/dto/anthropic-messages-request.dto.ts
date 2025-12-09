@@ -69,10 +69,8 @@ export type AnthropicContentBlock =
   | AnthropicToolUseBlock
   | AnthropicToolResultBlock;
 
-export class AnthropicMessageParam {
-  @IsString()
+export interface AnthropicMessageParam {
   role: 'user' | 'assistant';
-
   content: string | AnthropicContentBlock[];
 }
 
@@ -114,8 +112,6 @@ export class AnthropicMessagesRequestDto {
   model: string;
 
   @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => AnthropicMessageParam)
   messages: AnthropicMessageParam[];
 
   @IsNumber()
