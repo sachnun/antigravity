@@ -23,6 +23,20 @@ import {
   MODEL_OWNERS,
   USER_AGENT,
 } from './constants';
+import { SSEStreamParser } from '../common/utils';
+
+type ApiType = 'openai' | 'anthropic';
+
+interface RetryResult<T> {
+  success: true;
+  data: T;
+  accountState: AccountState;
+}
+
+interface RetryFailure {
+  success: false;
+  error: HttpException;
+}
 
 @Injectable()
 export class AntigravityService {
@@ -40,17 +54,61 @@ export class AntigravityService {
       this.configService.get<number>('accounts.maxRetryAccounts') || 3;
   }
 
-  async chatCompletion(
-    dto: ChatCompletionRequestDto,
-  ): Promise<ChatCompletionResponse> {
+  private checkAccountsExist(): void {
     if (!this.accountsService.hasAccounts()) {
       throw new HttpException(
         'No accounts configured. Visit /oauth/authorize to add accounts.',
         HttpStatus.SERVICE_UNAVAILABLE,
       );
     }
+  }
 
-    const requestId = `chatcmpl-${uuidv4()}`;
+  private createRateLimitError(
+    apiType: ApiType,
+    retryAfter?: number,
+  ): HttpException {
+    if (apiType === 'anthropic') {
+      return new HttpException(
+        {
+          type: 'error',
+          error: {
+            type: 'rate_limit_error',
+            message: retryAfter
+              ? `All accounts are rate limited. Retry after ${retryAfter} seconds.`
+              : 'All accounts are rate limited. Please try again later.',
+          },
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    return new HttpException(
+      {
+        error: {
+          message: retryAfter
+            ? `All accounts are rate limited. Retry after ${retryAfter} seconds.`
+            : 'All retry attempts exhausted due to rate limiting.',
+          type: 'rate_limit_error',
+          param: null,
+          code: 'rate_limit_exceeded',
+        },
+      },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+
+  private getRetryAfterSeconds(): number {
+    const earliestCooldown = this.accountsService.getEarliestCooldownEnd();
+    return earliestCooldown
+      ? Math.ceil((earliestCooldown - Date.now()) / 1000)
+      : 60;
+  }
+
+  private async withAccountRetry<T>(
+    operation: (accountState: AccountState) => Promise<T>,
+    apiType: ApiType,
+    res?: Response,
+  ): Promise<T> {
     const maxAttempts = Math.min(
       this.maxRetryAccounts,
       this.accountsService.getAccountCount(),
@@ -60,48 +118,15 @@ export class AntigravityService {
       const accountState = this.accountsService.getNextAccount();
 
       if (!accountState) {
-        const earliestCooldown = this.accountsService.getEarliestCooldownEnd();
-        const retryAfter = earliestCooldown
-          ? Math.ceil((earliestCooldown - Date.now()) / 1000)
-          : 60;
-
-        throw new HttpException(
-          {
-            error: {
-              message: `All accounts are rate limited. Retry after ${retryAfter} seconds.`,
-              type: 'rate_limit_error',
-              param: null,
-              code: 'rate_limit_exceeded',
-            },
-          },
-          HttpStatus.TOO_MANY_REQUESTS,
-        );
+        const retryAfter = this.getRetryAfterSeconds();
+        if (res) {
+          res.setHeader('Retry-After', String(retryAfter));
+        }
+        throw this.createRateLimitError(apiType, retryAfter);
       }
 
       try {
-        const projectId = await this.accountsService.getProjectId(accountState);
-        const antigravityRequest = this.transformerService.transformRequest(
-          dto,
-          projectId,
-        );
-
-        this.logger.debug(
-          `Chat completion: model=${dto.model}, account=${accountState.id} (${accountState.credential.email}), messages=${dto.messages.length}`,
-        );
-
-        const response = await this.makeRequest<AntigravityResponse>(
-          ':generateContent',
-          antigravityRequest,
-          accountState,
-        );
-
-        this.accountsService.markSuccess(accountState.id);
-
-        return this.transformerService.transformResponse(
-          response,
-          dto.model,
-          requestId,
-        );
+        return await operation(accountState);
       } catch (error) {
         if (this.isRateLimitError(error)) {
           this.accountsService.markCooldown(accountState.id);
@@ -114,198 +139,197 @@ export class AntigravityService {
       }
     }
 
-    throw new HttpException(
-      {
-        error: {
-          message: 'All retry attempts exhausted due to rate limiting.',
-          type: 'rate_limit_error',
-          param: null,
-          code: 'rate_limit_exceeded',
-        },
+    throw this.createRateLimitError(apiType);
+  }
+
+  private setSSEHeaders(res: Response): void {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+  }
+
+  private async createStreamRequest(
+    data: unknown,
+    accountState: AccountState,
+  ): Promise<Readable> {
+    const headers = await this.accountsService.getAuthHeaders(accountState);
+    const url = `${this.getBaseUrl()}:streamGenerateContent?alt=sse`;
+    const host = new URL(url).host;
+
+    const response: AxiosResponse<Readable> = await axios.post(url, data, {
+      headers: {
+        ...headers,
+        Host: host,
+        Accept: 'text/event-stream',
+        'User-Agent': USER_AGENT,
       },
-      HttpStatus.TOO_MANY_REQUESTS,
-    );
+      responseType: 'stream',
+    });
+
+    return response.data;
+  }
+
+  private async processStream(
+    stream: Readable,
+    res: Response,
+    handlers: {
+      onData: (data: string) => void;
+      onEnd: () => void;
+      onError: (error: Error) => void;
+      parser: SSEStreamParser;
+    },
+  ): Promise<void> {
+    const { onData, onEnd, onError, parser } = handlers;
+
+    await new Promise<void>((resolve, reject) => {
+      stream.on('data', (chunk: Buffer) => {
+        if (res.writableEnded || res.destroyed) {
+          return;
+        }
+
+        const dataLines = parser.parseChunk(chunk);
+        for (const data of dataLines) {
+          if (res.writableEnded || res.destroyed) {
+            return;
+          }
+
+          try {
+            onData(data);
+          } catch (e) {
+            this.logger.warn(`Failed to parse chunk: ${data}`);
+          }
+        }
+
+        if (parser.isDone(chunk)) {
+          return;
+        }
+      });
+
+      stream.on('end', () => {
+        if (!res.writableEnded && !res.destroyed) {
+          onEnd();
+          res.end();
+        }
+        resolve();
+      });
+
+      stream.on('error', (error: Error) => {
+        this.logger.error(`Stream error: ${error.message}`);
+        if (!res.writableEnded && !res.destroyed) {
+          onError(error);
+          res.end();
+        }
+        reject(error);
+      });
+    });
+  }
+
+  async chatCompletion(
+    dto: ChatCompletionRequestDto,
+  ): Promise<ChatCompletionResponse> {
+    this.checkAccountsExist();
+    const requestId = `chatcmpl-${uuidv4()}`;
+
+    return this.withAccountRetry(async (accountState) => {
+      const projectId = await this.accountsService.getProjectId(accountState);
+      const antigravityRequest = this.transformerService.transformRequest(
+        dto,
+        projectId,
+      );
+
+      this.logger.debug(
+        `Chat completion: model=${dto.model}, account=${accountState.id} (${accountState.credential.email}), messages=${dto.messages.length}`,
+      );
+
+      const response = await this.makeRequest<AntigravityResponse>(
+        ':generateContent',
+        antigravityRequest,
+        accountState,
+      );
+
+      this.accountsService.markSuccess(accountState.id);
+
+      return this.transformerService.transformResponse(
+        response,
+        dto.model,
+        requestId,
+      );
+    }, 'openai');
   }
 
   async chatCompletionStream(
     dto: ChatCompletionRequestDto,
     res: Response,
   ): Promise<void> {
-    if (!this.accountsService.hasAccounts()) {
-      throw new HttpException(
-        'No accounts configured. Visit /oauth/authorize to add accounts.',
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
-    }
-
+    this.checkAccountsExist();
     const requestId = `chatcmpl-${uuidv4()}`;
-    const maxAttempts = Math.min(
-      this.maxRetryAccounts,
-      this.accountsService.getAccountCount(),
-    );
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const accountState = this.accountsService.getNextAccount();
-
-      if (!accountState) {
-        const earliestCooldown = this.accountsService.getEarliestCooldownEnd();
-        const retryAfter = earliestCooldown
-          ? Math.ceil((earliestCooldown - Date.now()) / 1000)
-          : 60;
-
-        res.setHeader('Retry-After', String(retryAfter));
-        throw new HttpException(
-          {
-            error: {
-              message: `All accounts are rate limited. Retry after ${retryAfter} seconds.`,
-              type: 'rate_limit_error',
-              param: null,
-              code: 'rate_limit_exceeded',
-            },
-          },
-          HttpStatus.TOO_MANY_REQUESTS,
-        );
-      }
-
-      try {
+    await this.withAccountRetry(
+      async (accountState) => {
         const projectId = await this.accountsService.getProjectId(accountState);
         const antigravityRequest = this.transformerService.transformRequest(
           dto,
           projectId,
         );
 
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Connection', 'keep-alive');
-        res.setHeader('X-Accel-Buffering', 'no');
+        this.setSSEHeaders(res);
 
         this.logger.debug(
           `Streaming chat completion: model=${dto.model}, account=${accountState.id} (${accountState.credential.email})`,
         );
 
-        const headers = await this.accountsService.getAuthHeaders(accountState);
-        const url = `${this.getBaseUrl()}:streamGenerateContent?alt=sse`;
-        const host = new URL(url).host;
-
-        const response: AxiosResponse<Readable> = await axios.post(
-          url,
+        const stream = await this.createStreamRequest(
           antigravityRequest,
-          {
-            headers: {
-              ...headers,
-              Host: host,
-              Accept: 'text/event-stream',
-              'User-Agent': USER_AGENT,
-            },
-            responseType: 'stream',
-          },
+          accountState,
         );
-
         this.accountsService.markSuccess(accountState.id);
 
+        const parser = new SSEStreamParser();
         let isFirst = true;
-        let buffer = '';
-        const stream = response.data;
         const accumulator = this.transformerService.createStreamAccumulator();
 
-        await new Promise<void>((resolve, reject) => {
-          stream.on('data', (chunk: Buffer) => {
-            if (res.writableEnded || res.destroyed) {
-              return;
+        await this.processStream(stream, res, {
+          onData: (data) => {
+            const parsed = JSON.parse(data) as AntigravityStreamChunk;
+            const transformed = this.transformerService.transformStreamChunk(
+              parsed,
+              dto.model,
+              requestId,
+              isFirst,
+              accumulator,
+            );
+
+            if (transformed && !res.writableEnded && !res.destroyed) {
+              res.write(`data: ${JSON.stringify(transformed)}\n\n`);
+              isFirst = false;
             }
-
-            buffer += chunk.toString();
-            const lines = buffer.split('\n');
-            buffer = lines.pop() ?? '';
-
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const data = line.slice(6).trim();
-
-                if (res.writableEnded || res.destroyed) {
-                  return;
-                }
-
-                if (data === '[DONE]') {
-                  res.write('data: [DONE]\n\n');
-                  return;
-                }
-
-                try {
-                  const parsed = JSON.parse(data) as AntigravityStreamChunk;
-                  const transformed =
-                    this.transformerService.transformStreamChunk(
-                      parsed,
-                      dto.model,
-                      requestId,
-                      isFirst,
-                      accumulator,
-                    );
-
-                  if (transformed && !res.writableEnded && !res.destroyed) {
-                    res.write(`data: ${JSON.stringify(transformed)}\n\n`);
-                    isFirst = false;
-                  }
-                } catch {
-                  this.logger.warn(`Failed to parse chunk: ${data}`);
-                }
-              }
-            }
-          });
-
-          stream.on('end', () => {
-            if (!res.writableEnded && !res.destroyed) {
-              if (!accumulator.isComplete) {
-                const finalChunk = this.transformerService.createFinalChunk(
-                  requestId,
-                  dto.model,
-                  accumulator,
-                );
-                res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
-              }
-              res.write('data: [DONE]\n\n');
-              res.end();
-            }
-            resolve();
-          });
-
-          stream.on('error', (error: Error) => {
-            this.logger.error(`Stream error: ${error.message}`);
-            if (!res.writableEnded && !res.destroyed) {
-              res.write(
-                `data: ${JSON.stringify({ error: error.message })}\n\n`,
+          },
+          onEnd: () => {
+            if (!accumulator.isComplete) {
+              const finalChunk = this.transformerService.createFinalChunk(
+                requestId,
+                dto.model,
+                accumulator,
               );
-              res.end();
+              res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
             }
-            reject(error);
-          });
+            res.write('data: [DONE]\n\n');
+          },
+          onError: (error) => {
+            res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+          },
+          parser,
         });
-
-        return;
-      } catch (error) {
-        if (this.isRateLimitError(error) && !res.headersSent) {
-          this.accountsService.markCooldown(accountState.id);
-          this.logger.warn(
-            `Rate limited on account ${accountState.id} (${accountState.credential.email}), trying next account...`,
-          );
-          continue;
-        }
-        await this.handleStreamError(error, res);
-        return;
-      }
-    }
-
-    throw new HttpException(
-      {
-        error: {
-          message: 'All retry attempts exhausted due to rate limiting.',
-          type: 'rate_limit_error',
-          param: null,
-          code: 'rate_limit_exceeded',
-        },
       },
-      HttpStatus.TOO_MANY_REQUESTS,
-    );
+      'openai',
+      res,
+    ).catch(async (error) => {
+      if (!res.headersSent) {
+        throw error;
+      }
+      await this.handleStreamError(error, res);
+    });
   }
 
   listModels(): ModelsResponse {
@@ -326,78 +350,31 @@ export class AntigravityService {
     dto: AnthropicMessagesRequestDto,
     messageId: string,
   ): Promise<AnthropicMessagesResponse> {
-    if (!this.accountsService.hasAccounts()) {
-      throw new HttpException(
-        'No accounts configured. Visit /oauth/authorize to add accounts.',
-        HttpStatus.SERVICE_UNAVAILABLE,
+    this.checkAccountsExist();
+
+    return this.withAccountRetry(async (accountState) => {
+      const projectId = await this.accountsService.getProjectId(accountState);
+      const antigravityRequest =
+        this.anthropicTransformerService.transformRequest(dto, projectId);
+
+      this.logger.debug(
+        `Anthropic messages: model=${dto.model}, account=${accountState.id} (${accountState.credential.email}), messages=${dto.messages.length}`,
       );
-    }
 
-    const maxAttempts = Math.min(
-      this.maxRetryAccounts,
-      this.accountsService.getAccountCount(),
-    );
+      const response = await this.makeRequest<AntigravityResponse>(
+        ':generateContent',
+        antigravityRequest,
+        accountState,
+      );
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const accountState = this.accountsService.getNextAccount();
+      this.accountsService.markSuccess(accountState.id);
 
-      if (!accountState) {
-        throw new HttpException(
-          {
-            type: 'error',
-            error: {
-              type: 'rate_limit_error',
-              message: 'All accounts are rate limited. Please try again later.',
-            },
-          },
-          HttpStatus.TOO_MANY_REQUESTS,
-        );
-      }
-
-      try {
-        const projectId = await this.accountsService.getProjectId(accountState);
-        const antigravityRequest =
-          this.anthropicTransformerService.transformRequest(dto, projectId);
-
-        this.logger.debug(
-          `Anthropic messages: model=${dto.model}, account=${accountState.id} (${accountState.credential.email}), messages=${dto.messages.length}`,
-        );
-
-        const response = await this.makeRequest<AntigravityResponse>(
-          ':generateContent',
-          antigravityRequest,
-          accountState,
-        );
-
-        this.accountsService.markSuccess(accountState.id);
-
-        return this.anthropicTransformerService.transformResponse(
-          response,
-          dto.model,
-          messageId,
-        );
-      } catch (error) {
-        if (this.isRateLimitError(error)) {
-          this.accountsService.markCooldown(accountState.id);
-          this.logger.warn(
-            `Rate limited on account ${accountState.id} (${accountState.credential.email}), trying next account...`,
-          );
-          continue;
-        }
-        throw error;
-      }
-    }
-
-    throw new HttpException(
-      {
-        type: 'error',
-        error: {
-          type: 'rate_limit_error',
-          message: 'All retry attempts exhausted due to rate limiting.',
-        },
-      },
-      HttpStatus.TOO_MANY_REQUESTS,
-    );
+      return this.anthropicTransformerService.transformResponse(
+        response,
+        dto.model,
+        messageId,
+      );
+    }, 'anthropic');
   }
 
   async anthropicMessagesStream(
@@ -405,181 +382,83 @@ export class AntigravityService {
     res: Response,
     messageId: string,
   ): Promise<void> {
-    if (!this.accountsService.hasAccounts()) {
-      throw new HttpException(
-        'No accounts configured. Visit /oauth/authorize to add accounts.',
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
-    }
+    this.checkAccountsExist();
 
-    const maxAttempts = Math.min(
-      this.maxRetryAccounts,
-      this.accountsService.getAccountCount(),
-    );
-
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const accountState = this.accountsService.getNextAccount();
-
-      if (!accountState) {
-        throw new HttpException(
-          {
-            type: 'error',
-            error: {
-              type: 'rate_limit_error',
-              message: 'All accounts are rate limited. Please try again later.',
-            },
-          },
-          HttpStatus.TOO_MANY_REQUESTS,
-        );
-      }
-
-      try {
+    await this.withAccountRetry(
+      async (accountState) => {
         const projectId = await this.accountsService.getProjectId(accountState);
         const antigravityRequest =
           this.anthropicTransformerService.transformRequest(dto, projectId);
 
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Connection', 'keep-alive');
-        res.setHeader('X-Accel-Buffering', 'no');
+        this.setSSEHeaders(res);
 
         this.logger.debug(
           `Streaming Anthropic messages: model=${dto.model}, account=${accountState.id} (${accountState.credential.email})`,
         );
 
-        const headers = await this.accountsService.getAuthHeaders(accountState);
-        const url = `${this.getBaseUrl()}:streamGenerateContent?alt=sse`;
-        const host = new URL(url).host;
-
-        const response: AxiosResponse<Readable> = await axios.post(
-          url,
+        const stream = await this.createStreamRequest(
           antigravityRequest,
-          {
-            headers: {
-              ...headers,
-              Host: host,
-              Accept: 'text/event-stream',
-              'User-Agent': USER_AGENT,
-            },
-            responseType: 'stream',
-          },
+          accountState,
         );
-
         this.accountsService.markSuccess(accountState.id);
 
+        const parser = new SSEStreamParser();
         let isFirst = true;
-        let buffer = '';
-        const stream = response.data;
-
         const accumulator =
           this.anthropicTransformerService.createStreamAccumulator(
             messageId,
             dto.model,
           );
 
-        await new Promise<void>((resolve, reject) => {
-          stream.on('data', (chunk: Buffer) => {
-            if (res.writableEnded || res.destroyed) {
-              return;
-            }
+        await this.processStream(stream, res, {
+          onData: (data) => {
+            const parsed = JSON.parse(data) as AntigravityStreamChunk;
+            const events =
+              this.anthropicTransformerService.transformStreamChunk(
+                parsed,
+                accumulator,
+                isFirst,
+              );
 
-            buffer += chunk.toString();
-            const lines = buffer.split('\n');
-            buffer = lines.pop() ?? '';
-
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const data = line.slice(6).trim();
-
-                if (res.writableEnded || res.destroyed) {
-                  return;
-                }
-
-                if (data === '[DONE]') {
-                  return;
-                }
-
-                try {
-                  const parsed = JSON.parse(data) as AntigravityStreamChunk;
-                  const events =
-                    this.anthropicTransformerService.transformStreamChunk(
-                      parsed,
-                      accumulator,
-                      isFirst,
-                    );
-
-                  for (const event of events) {
-                    if (!res.writableEnded && !res.destroyed) {
-                      res.write(
-                        `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
-                      );
-                    }
-                  }
-
-                  if (events.length > 0) {
-                    isFirst = false;
-                  }
-                } catch {
-                  this.logger.warn(`Failed to parse chunk: ${data}`);
-                }
-              }
-            }
-          });
-
-          stream.on('end', () => {
-            if (!res.writableEnded && !res.destroyed) {
-              const finalEvents =
-                this.anthropicTransformerService.createFinalEvents(accumulator);
-              for (const event of finalEvents) {
+            for (const event of events) {
+              if (!res.writableEnded && !res.destroyed) {
                 res.write(
                   `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
                 );
               }
-              res.end();
             }
-            resolve();
-          });
 
-          stream.on('error', (error: Error) => {
-            this.logger.error(`Stream error: ${error.message}`);
-            if (!res.writableEnded && !res.destroyed) {
-              const errorEvent = {
-                type: 'error',
-                error: { type: 'api_error', message: error.message },
-              };
+            if (events.length > 0) {
+              isFirst = false;
+            }
+          },
+          onEnd: () => {
+            const finalEvents =
+              this.anthropicTransformerService.createFinalEvents(accumulator);
+            for (const event of finalEvents) {
               res.write(
-                `event: error\ndata: ${JSON.stringify(errorEvent)}\n\n`,
+                `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
               );
-              res.end();
             }
-            reject(error);
-          });
+          },
+          onError: (error) => {
+            const errorEvent = {
+              type: 'error',
+              error: { type: 'api_error', message: error.message },
+            };
+            res.write(`event: error\ndata: ${JSON.stringify(errorEvent)}\n\n`);
+          },
+          parser,
         });
-
-        return;
-      } catch (error) {
-        if (this.isRateLimitError(error) && !res.headersSent) {
-          this.accountsService.markCooldown(accountState.id);
-          this.logger.warn(
-            `Rate limited on account ${accountState.id} (${accountState.credential.email}), trying next account...`,
-          );
-          continue;
-        }
-        await this.handleAnthropicStreamError(error, res);
-        return;
-      }
-    }
-
-    throw new HttpException(
-      {
-        type: 'error',
-        error: {
-          type: 'rate_limit_error',
-          message: 'All retry attempts exhausted due to rate limiting.',
-        },
       },
-      HttpStatus.TOO_MANY_REQUESTS,
-    );
+      'anthropic',
+      res,
+    ).catch(async (error) => {
+      if (!res.headersSent) {
+        throw error;
+      }
+      await this.handleAnthropicStreamError(error, res);
+    });
   }
 
   private isRateLimitError(error: unknown): boolean {
@@ -596,62 +475,7 @@ export class AntigravityService {
     error: unknown,
     res: Response,
   ): Promise<void> {
-    const axiosError = error as AxiosError;
-    const status = axiosError.response?.status ?? 500;
-    let message = (error as Error).message;
-
-    if (axiosError.response?.data) {
-      try {
-        const responseData = axiosError.response.data as
-          | AsyncIterable<Buffer>
-          | AntigravityError;
-
-        if (
-          responseData &&
-          typeof (responseData as { on?: unknown }).on === 'function'
-        ) {
-          const chunks: Buffer[] = [];
-          for await (const chunk of responseData as AsyncIterable<Buffer>) {
-            chunks.push(chunk);
-          }
-          const body = Buffer.concat(chunks).toString('utf-8');
-          this.logger.error(`Streaming error body: ${body}`);
-
-          try {
-            const parsed = JSON.parse(body) as AntigravityError;
-            message = parsed?.error?.message ?? message;
-          } catch {
-            if (body.length < 500) {
-              message = body || message;
-            }
-          }
-        } else if (typeof responseData === 'object') {
-          const data = responseData as AntigravityError;
-          message = data?.error?.message ?? message;
-        }
-      } catch (readError) {
-        this.logger.warn(
-          `Could not read error response: ${(readError as Error).message}`,
-        );
-      }
-    }
-
-    this.logger.error(`Anthropic streaming error (${status}): ${message}`);
-
-    const errorResponse = {
-      type: 'error',
-      error: {
-        type: this.mapAnthropicErrorType(status),
-        message,
-      },
-    };
-
-    if (!res.headersSent) {
-      res.status(status).json(errorResponse);
-    } else if (!res.writableEnded) {
-      res.write(`event: error\ndata: ${JSON.stringify(errorResponse)}\n\n`);
-      res.end();
-    }
+    await this.handleStreamErrorInternal(error, res, 'anthropic');
   }
 
   private mapAnthropicErrorType(status: number): string {
@@ -806,10 +630,9 @@ export class AntigravityService {
     }
   }
 
-  private async handleStreamError(
+  private async extractErrorMessage(
     error: unknown,
-    res: Response,
-  ): Promise<void> {
+  ): Promise<{ status: number; message: string }> {
     const axiosError = error as AxiosError;
     const status = axiosError.response?.status ?? 500;
     let message = (error as Error).message;
@@ -850,22 +673,56 @@ export class AntigravityService {
       }
     }
 
-    this.logger.error(`Streaming error (${status}): ${message}`);
+    return { status, message };
+  }
 
-    const errorResponse = {
-      error: {
-        message,
-        type: this.mapErrorType(status),
-        param: null,
-        code: this.mapHttpStatusToErrorCode(status),
-      },
-    };
+  private async handleStreamErrorInternal(
+    error: unknown,
+    res: Response,
+    apiType: ApiType,
+  ): Promise<void> {
+    const { status, message } = await this.extractErrorMessage(error);
+
+    this.logger.error(
+      `${apiType === 'anthropic' ? 'Anthropic s' : 'S'}treaming error (${status}): ${message}`,
+    );
+
+    let errorResponse: unknown;
+    let dataPrefix: string;
+
+    if (apiType === 'anthropic') {
+      errorResponse = {
+        type: 'error',
+        error: {
+          type: this.mapAnthropicErrorType(status),
+          message,
+        },
+      };
+      dataPrefix = 'event: error\ndata: ';
+    } else {
+      errorResponse = {
+        error: {
+          message,
+          type: this.mapErrorType(status),
+          param: null,
+          code: this.mapHttpStatusToErrorCode(status),
+        },
+      };
+      dataPrefix = 'data: ';
+    }
 
     if (!res.headersSent) {
       res.status(status).json(errorResponse);
     } else if (!res.writableEnded) {
-      res.write(`data: ${JSON.stringify(errorResponse)}\n\n`);
+      res.write(`${dataPrefix}${JSON.stringify(errorResponse)}\n\n`);
       res.end();
     }
+  }
+
+  private async handleStreamError(
+    error: unknown,
+    res: Response,
+  ): Promise<void> {
+    await this.handleStreamErrorInternal(error, res, 'openai');
   }
 }
