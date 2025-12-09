@@ -1,7 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HttpException, HttpStatus } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AntigravityService } from './antigravity.service';
-import { AuthService } from './services/auth.service';
+import { AccountsService } from '../accounts/accounts.service';
 import { TransformerService } from './services/transformer.service';
 import { AnthropicTransformerService } from './services/anthropic-transformer.service';
 import { ChatCompletionRequestDto } from './dto';
@@ -9,10 +10,15 @@ import { ChatCompletionRequestDto } from './dto';
 describe('AntigravityService', () => {
   let service: AntigravityService;
 
-  const mockAuthService = {
-    hasCredentials: jest.fn(),
+  const mockAccountsService = {
+    hasAccounts: jest.fn(),
+    getAccountCount: jest.fn(),
+    getNextAccount: jest.fn(),
     getProjectId: jest.fn(),
     getAuthHeaders: jest.fn(),
+    markSuccess: jest.fn(),
+    markCooldown: jest.fn(),
+    getEarliestCooldownEnd: jest.fn(),
     refreshToken: jest.fn(),
   };
 
@@ -32,13 +38,17 @@ describe('AntigravityService', () => {
     createFinalEvents: jest.fn(),
   };
 
+  const mockConfigService = {
+    get: jest.fn().mockReturnValue(3),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AntigravityService,
         {
-          provide: AuthService,
-          useValue: mockAuthService,
+          provide: AccountsService,
+          useValue: mockAccountsService,
         },
         {
           provide: TransformerService,
@@ -47,6 +57,10 @@ describe('AntigravityService', () => {
         {
           provide: AnthropicTransformerService,
           useValue: mockAnthropicTransformerService,
+        },
+        {
+          provide: ConfigService,
+          useValue: mockConfigService,
         },
       ],
     }).compile();
@@ -66,19 +80,19 @@ describe('AntigravityService', () => {
       messages: [{ role: 'user', content: 'Hello' }],
     };
 
-    it('should throw HttpException when credentials not configured', async () => {
-      mockAuthService.hasCredentials.mockReturnValue(false);
+    it('should throw HttpException when no accounts configured', async () => {
+      mockAccountsService.hasAccounts.mockReturnValue(false);
 
       await expect(service.chatCompletion(mockDto)).rejects.toThrow(
         HttpException,
       );
       await expect(service.chatCompletion(mockDto)).rejects.toThrow(
-        'Antigravity credentials not configured',
+        'No accounts configured',
       );
     });
 
-    it('should throw HttpException with SERVICE_UNAVAILABLE status when credentials not configured', async () => {
-      mockAuthService.hasCredentials.mockReturnValue(false);
+    it('should throw HttpException with SERVICE_UNAVAILABLE status when no accounts', async () => {
+      mockAccountsService.hasAccounts.mockReturnValue(false);
 
       try {
         await service.chatCompletion(mockDto);
@@ -91,8 +105,8 @@ describe('AntigravityService', () => {
       }
     });
 
-    it('should call authService.hasCredentials()', async () => {
-      mockAuthService.hasCredentials.mockReturnValue(false);
+    it('should call accountsService.hasAccounts()', async () => {
+      mockAccountsService.hasAccounts.mockReturnValue(false);
 
       try {
         await service.chatCompletion(mockDto);
@@ -100,7 +114,7 @@ describe('AntigravityService', () => {
         // Expected to throw
       }
 
-      expect(mockAuthService.hasCredentials).toHaveBeenCalled();
+      expect(mockAccountsService.hasAccounts).toHaveBeenCalled();
     });
   });
 

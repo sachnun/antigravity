@@ -1,16 +1,47 @@
+interface AccountCredential {
+  email: string;
+  accessToken: string;
+  refreshToken: string;
+  expiryDate: number;
+  projectId?: string;
+}
+
+function loadAccountsFromEnv(): AccountCredential[] {
+  const accounts: AccountCredential[] = [];
+  let index = 1;
+
+  while (true) {
+    const envValue = process.env[`ANTIGRAVITY_ACCOUNTS_${index}`];
+    if (!envValue) break;
+
+    try {
+      const parsed = JSON.parse(envValue) as AccountCredential;
+      if (
+        parsed.email &&
+        parsed.accessToken &&
+        parsed.refreshToken &&
+        parsed.expiryDate
+      ) {
+        accounts.push(parsed);
+      }
+    } catch {
+      console.warn(
+        `Failed to parse ANTIGRAVITY_ACCOUNTS_${index}, skipping...`,
+      );
+    }
+
+    index++;
+  }
+
+  return accounts;
+}
+
 export default () => ({
   port: parseInt(process.env.PORT ?? '3000', 10),
 
-  // Proxy authentication
   proxyApiKey: process.env.PROXY_API_KEY ?? '',
 
-  // Antigravity OAuth credentials
   antigravity: {
-    accessToken: process.env.ANTIGRAVITY_ACCESS_TOKEN ?? '',
-    refreshToken: process.env.ANTIGRAVITY_REFRESH_TOKEN ?? '',
-    expiryDate: parseInt(process.env.ANTIGRAVITY_EXPIRY_DATE ?? '0', 10),
-    projectId: process.env.ANTIGRAVITY_PROJECT_ID ?? '',
-    email: process.env.ANTIGRAVITY_EMAIL ?? '',
     clientId:
       process.env.ANTIGRAVITY_CLIENT_ID ??
       '1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com',
@@ -19,7 +50,15 @@ export default () => ({
       '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',
   },
 
-  // OAuth settings
+  accounts: {
+    list: loadAccountsFromEnv(),
+    cooldownDurationMs: parseInt(
+      process.env.COOLDOWN_DURATION_MS ?? '60000',
+      10,
+    ),
+    maxRetryAccounts: parseInt(process.env.MAX_RETRY_ACCOUNTS ?? '3', 10),
+  },
+
   oauth: {
     callbackPort: parseInt(process.env.OAUTH_CALLBACK_PORT ?? '51121', 10),
     callbackPath: process.env.OAUTH_CALLBACK_PATH || '/oauthcallback',
