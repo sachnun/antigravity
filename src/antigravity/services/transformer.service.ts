@@ -31,6 +31,7 @@ import {
   THINKING_BUDGETS,
   DEFAULT_MAX_TOKENS,
 } from '../constants';
+import { cleanSchemaForClaude, generateSessionId } from '../../common/utils';
 
 export interface StreamAccumulator {
   reasoningContent: string;
@@ -63,7 +64,7 @@ export class TransformerService {
       requestId: `agent-${uuidv4()}`,
       model: internalModel,
       request: {
-        sessionId: this.generateSessionId(),
+        sessionId: generateSessionId(),
         contents,
         safetySettings: DEFAULT_SAFETY_SETTINGS,
       },
@@ -100,11 +101,6 @@ export class TransformerService {
     }
 
     return MODEL_ALIAS_MAP[model] || model;
-  }
-
-  private generateSessionId(): string {
-    const n = BigInt(Math.floor(Math.random() * 9e18) + 1e18);
-    return `-${n.toString()}`;
   }
 
   private transformMessages(messages: MessageDto[]): {
@@ -268,9 +264,7 @@ export class TransformerService {
 
         if (tool.function.parameters) {
           if (isClaude) {
-            decl.parameters = this.cleanSchemaForClaude(
-              tool.function.parameters,
-            );
+            decl.parameters = cleanSchemaForClaude(tool.function.parameters);
           } else {
             decl.parametersJsonSchema = tool.function.parameters;
           }
@@ -281,38 +275,6 @@ export class TransformerService {
     );
 
     return [{ functionDeclarations }];
-  }
-
-  private cleanSchemaForClaude(
-    schema: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const cleaned = { ...schema };
-    const toRemove = [
-      '$schema',
-      'additionalProperties',
-      'strict',
-      'default',
-      'title',
-      '$id',
-      '$ref',
-    ];
-
-    for (const key of toRemove) {
-      delete cleaned[key];
-    }
-
-    if (cleaned.properties && typeof cleaned.properties === 'object') {
-      const props = cleaned.properties as Record<string, unknown>;
-      for (const propKey of Object.keys(props)) {
-        if (typeof props[propKey] === 'object') {
-          props[propKey] = this.cleanSchemaForClaude(
-            props[propKey] as Record<string, unknown>,
-          );
-        }
-      }
-    }
-
-    return cleaned;
   }
 
   private transformToolChoice(

@@ -30,6 +30,7 @@ import {
   USER_AGENT,
   MODEL_ALIAS_MAP,
 } from '../constants';
+import { cleanSchemaForClaude, generateSessionId } from '../../common/utils';
 
 export interface AnthropicStreamAccumulator {
   messageId: string;
@@ -61,7 +62,7 @@ export class AnthropicTransformerService {
       requestId: `agent-${uuidv4()}`,
       model: internalModel,
       request: {
-        sessionId: this.generateSessionId(),
+        sessionId: generateSessionId(),
         contents,
         safetySettings: DEFAULT_SAFETY_SETTINGS,
       },
@@ -94,11 +95,6 @@ export class AnthropicTransformerService {
     }
 
     return MODEL_ALIAS_MAP[model] || model;
-  }
-
-  private generateSessionId(): string {
-    const n = BigInt(Math.floor(Math.random() * 9e18) + 1e18);
-    return `-${n.toString()}`;
   }
 
   private transformMessages(
@@ -254,7 +250,7 @@ export class AnthropicTransformerService {
             unknown
           >;
           if (isClaude) {
-            decl.parameters = this.cleanSchemaForClaude(schema);
+            decl.parameters = cleanSchemaForClaude(schema);
           } else {
             decl.parametersJsonSchema = schema;
           }
@@ -265,38 +261,6 @@ export class AnthropicTransformerService {
     );
 
     return [{ functionDeclarations }];
-  }
-
-  private cleanSchemaForClaude(
-    schema: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const cleaned = { ...schema };
-    const toRemove = [
-      '$schema',
-      'additionalProperties',
-      'strict',
-      'default',
-      'title',
-      '$id',
-      '$ref',
-    ];
-
-    for (const key of toRemove) {
-      delete cleaned[key];
-    }
-
-    if (cleaned.properties && typeof cleaned.properties === 'object') {
-      const props = cleaned.properties as Record<string, unknown>;
-      for (const propKey of Object.keys(props)) {
-        if (typeof props[propKey] === 'object') {
-          props[propKey] = this.cleanSchemaForClaude(
-            props[propKey] as Record<string, unknown>,
-          );
-        }
-      }
-    }
-
-    return cleaned;
   }
 
   private transformToolChoice(

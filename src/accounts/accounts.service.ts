@@ -28,7 +28,9 @@ interface OnboardUserResponse {
 @Injectable()
 export class AccountsService implements OnModuleInit {
   private readonly logger = new Logger(AccountsService.name);
-  private accountStates: AccountState[] = [];
+  private accountStatesMap = new Map<string, AccountState>();
+  private accountsList: AccountState[] = [];
+  private emailToIdMap = new Map<string, string>();
   private currentIndex = 0;
   private readonly TOKEN_URI = 'https://oauth2.googleapis.com/token';
   private readonly CODE_ASSIST_ENDPOINT =
@@ -62,34 +64,40 @@ export class AccountsService implements OnModuleInit {
       return;
     }
 
-    this.accountStates = accounts.map((credential, index) => ({
-      id: `account-${index + 1}`,
-      credential,
-      status: 'ready' as const,
-      requestCount: 0,
-      errorCount: 0,
-    }));
+    accounts.forEach((credential, index) => {
+      const id = `account-${index + 1}`;
+      const state: AccountState = {
+        id,
+        credential,
+        status: 'ready' as const,
+        requestCount: 0,
+        errorCount: 0,
+      };
+      this.accountStatesMap.set(id, state);
+      this.accountsList.push(state);
+      this.emailToIdMap.set(credential.email, id);
+    });
 
     this.logger.log(
-      `Loaded ${this.accountStates.length} account(s) for rotation`,
+      `Loaded ${this.accountStatesMap.size} account(s) for rotation`,
     );
-    this.accountStates.forEach((state) => {
+    this.accountsList.forEach((state) => {
       this.logger.log(`  - ${state.id}: ${state.credential.email}`);
     });
   }
 
   hasAccounts(): boolean {
-    return this.accountStates.length > 0;
+    return this.accountStatesMap.size > 0;
   }
 
   getAccountCount(): number {
-    return this.accountStates.length;
+    return this.accountStatesMap.size;
   }
 
   getNextAccount(): AccountState | null {
     const now = Date.now();
 
-    this.accountStates.forEach((state) => {
+    this.accountsList.forEach((state) => {
       if (
         state.status === 'cooldown' &&
         state.cooldownUntil &&
@@ -103,9 +111,7 @@ export class AccountsService implements OnModuleInit {
       }
     });
 
-    const readyAccounts = this.accountStates.filter(
-      (s) => s.status === 'ready',
-    );
+    const readyAccounts = this.accountsList.filter((s) => s.status === 'ready');
 
     if (readyAccounts.length === 0) {
       return null;
@@ -119,7 +125,7 @@ export class AccountsService implements OnModuleInit {
   }
 
   markCooldown(accountId: string): void {
-    const state = this.accountStates.find((s) => s.id === accountId);
+    const state = this.accountStatesMap.get(accountId);
     if (state) {
       state.status = 'cooldown';
       state.cooldownUntil = Date.now() + this.COOLDOWN_DURATION_MS;
@@ -131,7 +137,7 @@ export class AccountsService implements OnModuleInit {
   }
 
   markError(accountId: string): void {
-    const state = this.accountStates.find((s) => s.id === accountId);
+    const state = this.accountStatesMap.get(accountId);
     if (state) {
       state.status = 'error';
       state.errorCount++;
@@ -142,7 +148,7 @@ export class AccountsService implements OnModuleInit {
   }
 
   markSuccess(accountId: string): void {
-    const state = this.accountStates.find((s) => s.id === accountId);
+    const state = this.accountStatesMap.get(accountId);
     if (state) {
       state.requestCount++;
       state.lastUsed = Date.now();
@@ -157,12 +163,10 @@ export class AccountsService implements OnModuleInit {
     accountNumber: number;
     isNew: boolean;
   } {
-    const existingIndex = this.accountStates.findIndex(
-      (s) => s.credential.email === credential.email,
-    );
+    const existingId = this.emailToIdMap.get(credential.email);
 
-    if (existingIndex !== -1) {
-      const existing = this.accountStates[existingIndex];
+    if (existingId) {
+      const existing = this.accountStatesMap.get(existingId)!;
       existing.credential.accessToken = credential.accessToken;
       existing.credential.refreshToken = credential.refreshToken;
       existing.credential.expiryDate = credential.expiryDate;
@@ -171,14 +175,16 @@ export class AccountsService implements OnModuleInit {
       this.logger.log(
         `Updated existing account ${existing.id}: ${credential.email}`,
       );
+      const accountNumber =
+        this.accountsList.findIndex((s) => s.id === existingId) + 1;
       return {
         id: existing.id,
-        accountNumber: existingIndex + 1,
+        accountNumber,
         isNew: false,
       };
     }
 
-    const accountNumber = this.accountStates.length + 1;
+    const accountNumber = this.accountStatesMap.size + 1;
     const id = `account-${accountNumber}`;
     const newState: AccountState = {
       id,
@@ -188,13 +194,15 @@ export class AccountsService implements OnModuleInit {
       errorCount: 0,
     };
 
-    this.accountStates.push(newState);
+    this.accountStatesMap.set(id, newState);
+    this.accountsList.push(newState);
+    this.emailToIdMap.set(credential.email, id);
     this.logger.log(`Added new account ${id}: ${credential.email}`);
     return { id, accountNumber, isNew: true };
   }
 
   getStatus(): AccountStatusResponse {
-    const accounts: AccountPublicInfo[] = this.accountStates.map((state) => ({
+    const accounts: AccountPublicInfo[] = this.accountsList.map((state) => ({
       id: state.id,
       email: this.maskEmail(state.credential.email),
       status: state.status,
@@ -205,13 +213,12 @@ export class AccountsService implements OnModuleInit {
     }));
 
     return {
-      totalAccounts: this.accountStates.length,
-      readyAccounts: this.accountStates.filter((s) => s.status === 'ready')
+      totalAccounts: this.accountStatesMap.size,
+      readyAccounts: this.accountsList.filter((s) => s.status === 'ready')
         .length,
-      cooldownAccounts: this.accountStates.filter(
-        (s) => s.status === 'cooldown',
-      ).length,
-      errorAccounts: this.accountStates.filter((s) => s.status === 'error')
+      cooldownAccounts: this.accountsList.filter((s) => s.status === 'cooldown')
+        .length,
+      errorAccounts: this.accountsList.filter((s) => s.status === 'error')
         .length,
       currentIndex: this.currentIndex,
       accounts,
@@ -236,7 +243,7 @@ export class AccountsService implements OnModuleInit {
   }
 
   getEarliestCooldownEnd(): number | null {
-    const cooldownAccounts = this.accountStates.filter(
+    const cooldownAccounts = this.accountsList.filter(
       (s) => s.status === 'cooldown' && s.cooldownUntil,
     );
     if (cooldownAccounts.length === 0) return null;
