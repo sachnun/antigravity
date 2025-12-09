@@ -2,7 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
-import { AuthService } from './antigravity/services/auth.service';
+import { AccountsService } from './accounts/accounts.service';
 import { OpenAIExceptionFilter } from './common/filters/openai-exception.filter';
 
 async function bootstrap() {
@@ -18,32 +18,36 @@ async function bootstrap() {
     }),
   );
 
-  // Enable CORS
   app.enableCors();
 
   const configService = app.get(ConfigService);
-  const authService = app.get(AuthService);
+  const accountsService = app.get(AccountsService);
   const port = configService.get<number>('port') || 3000;
 
-  // Check if credentials are available
-  if (!authService.hasCredentials()) {
+  if (!accountsService.hasAccounts()) {
     logger.warn('='.repeat(60));
-    logger.warn('ANTIGRAVITY CREDENTIALS NOT FOUND');
+    logger.warn('NO ACCOUNTS CONFIGURED');
     logger.warn('='.repeat(60));
     logger.warn('');
-    logger.warn('To use the Antigravity API, you need OAuth credentials.');
+    logger.warn('To use the Antigravity API, you need to add accounts.');
     logger.warn('');
-    logger.warn('Option 1: Set environment variables:');
-    logger.warn('  ANTIGRAVITY_ACCESS_TOKEN=<your-token>');
-    logger.warn('  ANTIGRAVITY_REFRESH_TOKEN=<your-refresh-token>');
-    logger.warn('  ANTIGRAVITY_EXPIRY_DATE=<expiry-timestamp-ms>');
-    logger.warn('');
-    logger.warn('Option 2: Start OAuth flow (after server starts):');
+    logger.warn('Step 1: Start OAuth flow:');
     logger.warn(`  Visit: http://localhost:${port}/oauth/authorize`);
     logger.warn('');
+    logger.warn('Step 2: Copy the output to your .env file:');
+    logger.warn(
+      '  ANTIGRAVITY_ACCOUNTS_1=\'{"email":"...","accessToken":"...","refreshToken":"...","expiryDate":...}\'',
+    );
+    logger.warn('');
+    logger.warn('Step 3: Restart the server');
+    logger.warn('');
+    logger.warn('For multiple accounts (rotation), add more:');
+    logger.warn("  ANTIGRAVITY_ACCOUNTS_2='...'");
+    logger.warn("  ANTIGRAVITY_ACCOUNTS_3='...'");
     logger.warn('='.repeat(60));
   } else {
-    logger.log('Antigravity credentials loaded successfully');
+    const count = accountsService.getAccountCount();
+    logger.log(`Loaded ${count} account(s) for rotation`);
   }
 
   await app.listen(port);
@@ -52,10 +56,11 @@ async function bootstrap() {
   logger.log(`Antigravity Proxy running on http://localhost:${port}`);
   logger.log('');
   logger.log('Endpoints:');
-  logger.log(`  POST /v1/chat/completions - Chat completion`);
-  logger.log(`  GET  /v1/models          - List models`);
-  logger.log(`  GET  /oauth/status       - OAuth status`);
-  logger.log(`  GET  /oauth/authorize    - Start OAuth flow`);
+  logger.log(`  POST /v1/chat/completions - Chat completion (OpenAI)`);
+  logger.log(`  POST /v1/messages         - Messages (Anthropic)`);
+  logger.log(`  GET  /v1/models           - List models`);
+  logger.log(`  GET  /accounts/status     - Account status`);
+  logger.log(`  GET  /oauth/authorize     - Start OAuth flow`);
   logger.log('='.repeat(60));
 }
 void bootstrap();
