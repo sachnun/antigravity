@@ -46,7 +46,6 @@ export interface UsageInfo {
   };
 }
 
-// Streaming response types
 export interface ChatCompletionChunk {
   id: string;
   object: 'chat.completion.chunk';

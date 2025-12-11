@@ -33,7 +33,7 @@ export class AuthService implements OnModuleInit {
   private readonly TOKEN_URI = 'https://oauth2.googleapis.com/token';
   private readonly CODE_ASSIST_ENDPOINT =
     'https://cloudcode-pa.googleapis.com/v1internal';
-  private readonly REFRESH_BUFFER_MS = 5 * 60 * 1000; // 5 minutes before expiry
+  private readonly REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
   constructor(private readonly configService: ConfigService) {}
 

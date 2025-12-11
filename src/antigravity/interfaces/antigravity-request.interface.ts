@@ -55,7 +55,7 @@ export interface AntigravityGenerationConfig {
   thinkingConfig?: {
     thinkingBudget?: number;
     thinkingLevel?: 'low' | 'high';
-    include_thoughts?: boolean; // NOTE: snake_case per Antigravity API
+    include_thoughts?: boolean;
   };
 }
 

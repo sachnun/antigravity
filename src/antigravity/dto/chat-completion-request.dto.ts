@@ -8,7 +8,6 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-// OpenAI message format
 export class MessageDto {
   @IsString()
   role: 'system' | 'user' | 'assistant' | 'tool';
@@ -111,7 +110,6 @@ export class ChatCompletionRequestDto {
   @IsString()
   user?: string;
 
-  // Extended: reasoning effort for thinking models
   @IsOptional()
   @IsString()
   reasoning_effort?: 'low' | 'medium' | 'high';
