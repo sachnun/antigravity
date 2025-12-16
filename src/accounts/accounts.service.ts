@@ -94,7 +94,7 @@ export class AccountsService implements OnModuleInit {
     return this.accountStatesMap.size;
   }
 
-  getNextAccount(): AccountState | null {
+  getReadyAccounts(): AccountState[] {
     const now = Date.now();
 
     this.accountsList.forEach((state) => {
@@ -111,7 +111,11 @@ export class AccountsService implements OnModuleInit {
       }
     });
 
-    const readyAccounts = this.accountsList.filter((s) => s.status === 'ready');
+    return this.accountsList.filter((s) => s.status === 'ready');
+  }
+
+  getNextAccount(): AccountState | null {
+    const readyAccounts = this.getReadyAccounts();
 
     if (readyAccounts.length === 0) {
       return null;
@@ -122,6 +126,21 @@ export class AccountsService implements OnModuleInit {
     this.currentIndex = (this.currentIndex + 1) % readyAccounts.length;
 
     return selected;
+  }
+
+  getAccountById(accountId: string): AccountState | undefined {
+    return this.accountStatesMap.get(accountId);
+  }
+
+  getAllAccountIds(): string[] {
+    return Array.from(this.accountStatesMap.keys());
+  }
+
+  getAccountsForQuotaStatus(): Array<{ id: string; email: string }> {
+    return this.accountsList.map((state) => ({
+      id: state.id,
+      email: this.maskEmail(state.credential.email),
+    }));
   }
 
   markCooldown(accountId: string): void {
