@@ -86,12 +86,14 @@ export class AnthropicTransformerService {
     model: string,
     thinking?: { type: 'enabled' | 'disabled'; budget_tokens?: number },
   ): string {
+    const isThinking = thinking?.type === 'enabled';
+
     if (model === 'claude-opus-4-5') {
-      return 'claude-opus-4-5-thinking';
+      return isThinking ? 'claude-opus-4-5-thinking' : 'claude-opus-4-5';
     }
 
-    if (model === 'claude-sonnet-4-5' && thinking?.type === 'enabled') {
-      return 'claude-sonnet-4-5-thinking';
+    if (model === 'claude-sonnet-4-5') {
+      return isThinking ? 'claude-sonnet-4-5-thinking' : 'claude-sonnet-4-5';
     }
 
     return MODEL_ALIAS_MAP[model] || model;
