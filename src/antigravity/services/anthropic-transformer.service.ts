@@ -86,12 +86,14 @@ export class AnthropicTransformerService {
     model: string,
     thinking?: { type: 'enabled' | 'disabled'; budget_tokens?: number },
   ): string {
+    const isThinking = thinking?.type === 'enabled';
+
     if (model === 'claude-opus-4-5') {
       return 'claude-opus-4-5-thinking';
     }
 
-    if (model === 'claude-sonnet-4-5' && thinking?.type === 'enabled') {
-      return 'claude-sonnet-4-5-thinking';
+    if (model === 'claude-sonnet-4-5') {
+      return isThinking ? 'claude-sonnet-4-5-thinking' : 'claude-sonnet-4-5';
     }
 
     return MODEL_ALIAS_MAP[model] || model;
@@ -220,9 +222,10 @@ export class AnthropicTransformerService {
     if (dto.max_tokens) config.maxOutputTokens = dto.max_tokens;
     if (dto.stop_sequences?.length) config.stopSequences = dto.stop_sequences;
 
-    if (dto.thinking?.type === 'enabled') {
+    const isOpus = dto.model === 'claude-opus-4-5';
+    if (dto.thinking?.type === 'enabled' || isOpus) {
       config.thinkingConfig = {
-        thinkingBudget: dto.thinking.budget_tokens || 16384,
+        thinkingBudget: dto.thinking?.budget_tokens || 16384,
         include_thoughts: true,
       };
     }

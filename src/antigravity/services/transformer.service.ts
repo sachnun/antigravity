@@ -86,18 +86,20 @@ export class TransformerService {
 
   private getInternalModel(model: string, reasoningEffort?: string): string {
     if (model === 'gemini-3-pro-preview' || model.startsWith('gemini-3-pro')) {
-      if (reasoningEffort === 'low' || model === 'gemini-3-pro-low') {
-        return 'gemini-3-pro-low';
+      if (reasoningEffort === 'medium' || reasoningEffort === 'high') {
+        return 'gemini-3-pro-high';
       }
-      return 'gemini-3-pro-high';
+      return 'gemini-3-pro-low';
     }
 
     if (model === 'claude-opus-4-5') {
       return 'claude-opus-4-5-thinking';
     }
 
-    if (model === 'claude-sonnet-4-5' && reasoningEffort) {
-      return 'claude-sonnet-4-5-thinking';
+    if (model === 'claude-sonnet-4-5') {
+      return reasoningEffort
+        ? 'claude-sonnet-4-5-thinking'
+        : 'claude-sonnet-4-5';
     }
 
     return MODEL_ALIAS_MAP[model] || model;
@@ -228,17 +230,15 @@ export class TransformerService {
 
     if (dto.stop) config.stopSequences = dto.stop;
 
-    if (isGemini3) {
-      const level =
-        dto.reasoning_effort === 'low' || dto.model.includes('-low')
-          ? 'low'
-          : 'high';
+    if (isGemini3 && dto.reasoning_effort) {
+      const level = dto.reasoning_effort === 'low' ? 'low' : 'high';
       config.thinkingConfig = {
         thinkingLevel: level,
         include_thoughts: true,
       };
     } else if (isClaude || dto.model.includes('gemini-2.5')) {
-      if (dto.reasoning_effort || dto.model.includes('thinking')) {
+      const isOpus = dto.model === 'claude-opus-4-5';
+      if (dto.reasoning_effort || isOpus) {
         const budget = dto.reasoning_effort
           ? THINKING_BUDGETS[dto.reasoning_effort]
           : -1;
