@@ -78,4 +78,9 @@ export class AntigravityController {
 
     return this.antigravityService.anthropicMessages(dto, messageId);
   }
+
+  @Get('quota')
+  async getQuotaStatus() {
+    return this.antigravityService.getQuotaStatus();
+  }
 }

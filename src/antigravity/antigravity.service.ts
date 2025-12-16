@@ -8,6 +8,7 @@ import { AccountsService } from '../accounts/accounts.service';
 import { AccountState } from '../accounts/interfaces';
 import { TransformerService } from './services/transformer.service';
 import { AnthropicTransformerService } from './services/anthropic-transformer.service';
+import { QuotaService } from '../quota/quota.service';
 import { ChatCompletionRequestDto } from './dto';
 import { ChatCompletionResponse, ModelsResponse } from './dto';
 import { AnthropicMessagesRequestDto } from './dto/anthropic-messages-request.dto';
@@ -24,19 +25,9 @@ import {
   USER_AGENT,
 } from './constants';
 import { SSEStreamParser } from '../common/utils';
+import { QuotaStatusResponse } from '../quota/interfaces';
 
 type ApiType = 'openai' | 'anthropic';
-
-interface RetryResult<T> {
-  success: true;
-  data: T;
-  accountState: AccountState;
-}
-
-interface RetryFailure {
-  success: false;
-  error: HttpException;
-}
 
 @Injectable()
 export class AntigravityService {
@@ -48,6 +39,7 @@ export class AntigravityService {
     private readonly accountsService: AccountsService,
     private readonly transformerService: TransformerService,
     private readonly anthropicTransformerService: AnthropicTransformerService,
+    private readonly quotaService: QuotaService,
     private readonly configService: ConfigService,
   ) {
     this.maxRetryAccounts =
@@ -196,7 +188,7 @@ export class AntigravityService {
 
           try {
             onData(data);
-          } catch (e) {
+          } catch {
             this.logger.warn(`Failed to parse chunk: ${data}`);
           }
         }
@@ -344,6 +336,36 @@ export class AntigravityService {
         owned_by: MODEL_OWNERS[id] || 'unknown',
       })),
     };
+  }
+
+  async getQuotaStatus(): Promise<QuotaStatusResponse> {
+    const readyAccounts = this.accountsService.getReadyAccounts();
+
+    await Promise.allSettled(
+      readyAccounts.map((account) => this.refreshAccountQuota(account)),
+    );
+
+    const accounts = this.accountsService.getAccountsForQuotaStatus();
+    return this.quotaService.getQuotaStatus(accounts);
+  }
+
+  private async refreshAccountQuota(accountState: AccountState): Promise<void> {
+    try {
+      const accessToken =
+        await this.accountsService.getAccessToken(accountState);
+      const projectId = await this.accountsService.getProjectId(accountState);
+      await this.quotaService.fetchQuotaFromUpstream(
+        accountState,
+        accessToken,
+        projectId,
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.warn(
+        `Failed to refresh quota for account ${accountState.id}: ${errorMessage}`,
+      );
+    }
   }
 
   async anthropicMessages(

@@ -5,6 +5,7 @@ import { AntigravityService } from './antigravity.service';
 import { AccountsService } from '../accounts/accounts.service';
 import { TransformerService } from './services/transformer.service';
 import { AnthropicTransformerService } from './services/anthropic-transformer.service';
+import { QuotaService } from '../quota/quota.service';
 import { ChatCompletionRequestDto } from './dto';
 
 describe('AntigravityService', () => {
@@ -20,6 +21,10 @@ describe('AntigravityService', () => {
     markCooldown: jest.fn(),
     getEarliestCooldownEnd: jest.fn(),
     refreshToken: jest.fn(),
+    getAccountsForQuotaStatus: jest.fn().mockReturnValue([]),
+    getReadyAccounts: jest.fn().mockReturnValue([]),
+    getAccountById: jest.fn(),
+    getAccessToken: jest.fn(),
   };
 
   const mockTransformerService = {
@@ -36,6 +41,13 @@ describe('AntigravityService', () => {
     createStreamAccumulator: jest.fn(),
     transformStreamChunk: jest.fn(),
     createFinalEvents: jest.fn(),
+  };
+
+  const mockQuotaService = {
+    getQuotaStatus: jest
+      .fn()
+      .mockReturnValue({ totalAccounts: 0, accounts: [] }),
+    fetchQuotaFromUpstream: jest.fn(),
   };
 
   const mockConfigService = {
@@ -57,6 +69,10 @@ describe('AntigravityService', () => {
         {
           provide: AnthropicTransformerService,
           useValue: mockAnthropicTransformerService,
+        },
+        {
+          provide: QuotaService,
+          useValue: mockQuotaService,
         },
         {
           provide: ConfigService,
