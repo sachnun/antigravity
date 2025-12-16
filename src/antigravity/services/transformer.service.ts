@@ -237,7 +237,8 @@ export class TransformerService {
         include_thoughts: true,
       };
     } else if (isClaude || dto.model.includes('gemini-2.5')) {
-      if (dto.reasoning_effort || dto.model.includes('thinking')) {
+      const isOpus = dto.model === 'claude-opus-4-5';
+      if (dto.reasoning_effort || isOpus) {
         const budget = dto.reasoning_effort
           ? THINKING_BUDGETS[dto.reasoning_effort]
           : -1;

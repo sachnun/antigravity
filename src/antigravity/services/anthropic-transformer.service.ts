@@ -222,9 +222,10 @@ export class AnthropicTransformerService {
     if (dto.max_tokens) config.maxOutputTokens = dto.max_tokens;
     if (dto.stop_sequences?.length) config.stopSequences = dto.stop_sequences;
 
-    if (dto.thinking?.type === 'enabled') {
+    const isOpus = dto.model === 'claude-opus-4-5';
+    if (dto.thinking?.type === 'enabled' || isOpus) {
       config.thinkingConfig = {
-        thinkingBudget: dto.thinking.budget_tokens || 16384,
+        thinkingBudget: dto.thinking?.budget_tokens || 16384,
         include_thoughts: true,
       };
     }
