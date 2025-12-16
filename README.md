@@ -21,6 +21,7 @@ Visit `http://localhost:3000/oauth/authorize` to authenticate with Google.
 | `POST /v1/chat/completions` | OpenAI    |
 | `POST /v1/messages`         | Anthropic |
 | `GET /v1/models`            | OpenAI    |
+| `GET /v1/quota`             | -         |
 
 ## Models
 
