@@ -32,7 +32,7 @@ export class QuotaService {
     const endpoint = ':fetchAvailableModels';
 
     for (const baseUrl of BASE_URLS) {
-      const url = `${baseUrl}/v1internal${endpoint}`;
+      const url = `${baseUrl}${endpoint}`;
 
       try {
         this.logger.debug(
