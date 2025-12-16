@@ -27,10 +27,9 @@ Visit `http://localhost:3000/oauth/authorize` to authenticate with Google.
 
 - `gemini-3-pro-preview`
 - `claude-sonnet-4-5`
-- `claude-sonnet-4-5-thinking`
 - `claude-opus-4-5`
 
-_as of 9-12-2025_
+_as of 16-12-2025_
 
 ## License
 
