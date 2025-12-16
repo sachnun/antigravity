@@ -89,7 +89,7 @@ export class AnthropicTransformerService {
     const isThinking = thinking?.type === 'enabled';
 
     if (model === 'claude-opus-4-5') {
-      return isThinking ? 'claude-opus-4-5-thinking' : 'claude-opus-4-5';
+      return 'claude-opus-4-5-thinking';
     }
 
     if (model === 'claude-sonnet-4-5') {

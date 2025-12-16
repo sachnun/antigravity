@@ -93,7 +93,7 @@ export class TransformerService {
     }
 
     if (model === 'claude-opus-4-5') {
-      return reasoningEffort ? 'claude-opus-4-5-thinking' : 'claude-opus-4-5';
+      return 'claude-opus-4-5-thinking';
     }
 
     if (model === 'claude-sonnet-4-5') {
