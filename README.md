@@ -26,6 +26,7 @@ Visit `http://localhost:3000/oauth/authorize` to authenticate with Google.
 ## Models
 
 - `gemini-3-pro-preview`
+- `gemini-3-flash`
 - `claude-sonnet-4-5`
 - `claude-opus-4-5`
 
