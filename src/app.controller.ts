@@ -1,12 +1,48 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Header, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { AppService } from './app.service';
+import { AccountsService } from './accounts/accounts.service';
+import { AntigravityService } from './antigravity/antigravity.service';
+import { QuotaService } from './quota/quota.service';
 
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+  private initialRefreshDone = false;
 
-  @Get()
+  constructor(
+    private readonly appService: AppService,
+    private readonly accountsService: AccountsService,
+    private readonly antigravityService: AntigravityService,
+    private readonly quotaService: QuotaService,
+  ) {}
+
+  @Get('health')
   getHealth(): { status: string; timestamp: string } {
     return this.appService.getHealth();
+  }
+
+  @Get()
+  @Header('Content-Type', 'text/html')
+  async getDashboard(): Promise<string> {
+    const status = this.accountsService.getStatus();
+    const quotaAccounts = this.accountsService.getAccountsForQuotaStatus();
+
+    // Se for a primeira vez carregando a página, faz o refresh automático
+    if (!this.initialRefreshDone && status.totalAccounts > 0) {
+      this.initialRefreshDone = true;
+      const quotaStatus = await this.antigravityService.getQuotaStatus();
+      return this.appService.getDashboard(status, quotaStatus);
+    }
+
+    // Nas vezes seguintes, usa o cache para performance
+    const quotaStatus = this.quotaService.getQuotaStatus(quotaAccounts);
+    return this.appService.getDashboard(status, quotaStatus);
+  }
+
+  @Get('quota/refresh')
+  async refreshQuota(@Res() res: Response) {
+    // Force refresh from upstream
+    await this.antigravityService.getQuotaStatus();
+    res.redirect('/');
   }
 }
