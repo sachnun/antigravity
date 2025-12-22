@@ -34,7 +34,9 @@ async function bootstrap() {
     .addTag('Accounts', 'Account management')
     .build();
   const documentFactory = () => SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('docs', app, documentFactory);
+  SwaggerModule.setup('docs', app, documentFactory, {
+    customJs: '/public/swagger-theme.js',
+  });
 
   app.useGlobalFilters(new OpenAIExceptionFilter());
 

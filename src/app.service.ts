@@ -22,10 +22,6 @@ export class AppService {
     status: AccountStatusResponse,
     quotaStatus: QuotaStatusResponse,
   ): string {
-    const modelsList = AVAILABLE_MODELS.map(
-      (m) => `<span class="tag">${m}</span>`,
-    ).join('');
-
     const accountsRows = status.accounts
       .map((acc, index) => {
         const accountQuota = quotaStatus.accounts.find(
@@ -1433,6 +1429,11 @@ export class AppService {
                 document.documentElement.removeAttribute('data-theme');
                 document.getElementById('icon-dark').style.display = 'block';
                 document.getElementById('icon-light').style.display = 'none';
+            }
+            // Notify Swagger iframe about theme change
+            const iframe = document.querySelector('.spa-frame');
+            if (iframe && iframe.contentWindow) {
+                iframe.contentWindow.postMessage({ type: 'THEME_CHANGE', theme: theme }, '*');
             }
         }
 

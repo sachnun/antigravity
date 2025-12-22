@@ -163,31 +163,11 @@ export class OAuthController {
 
             if (window.opener) {
               window.opener.postMessage(messageData, '*');
-              
             } else if (window.parent !== window) {
               // Iframe / Modal Mode
               window.parent.postMessage(messageData, '*');
             }
 
-          </script>
-        </body>
-        </html>
-      `);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      res.status(500).send(`
-        <html>
-        <head>
-          <title>OAuth Error</title>
-          <script>
-            const errorData = {
-              type: 'OAUTH_ERROR',
-              message: '${message.replace(/'/g, "\\'")}'
-            };
-            if (window.opener) {
-              window.opener.postMessage(errorData, '*');
-            } else if (window.parent !== window) {
-              window.parent.postMessage(errorData, '*');
             function copyToClipboard(elementId, button) {
               const text = document.getElementById(elementId).textContent;
               navigator.clipboard.writeText(text).then(() => {
@@ -199,6 +179,31 @@ export class OAuthController {
                   button.style.background = '#3b82f6';
                 }, 2000);
               });
+            }
+          </script>
+        </body>
+        </html>
+      `);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      res.status(500).send(`
+        <html>
+        <head>
+          <title>OAuth Error</title>
+          <style>
+            body { font-family: system-ui, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; background: #0f0f0f; color: #e0e0e0; text-align: center; }
+            h1 { color: #ef4444; }
+            a { color: #3b82f6; }
+          </style>
+          <script>
+            const errorData = {
+              type: 'OAUTH_ERROR',
+              message: '${message.replace(/'/g, "\\'")}'
+            };
+            if (window.opener) {
+              window.opener.postMessage(errorData, '*');
+            } else if (window.parent !== window) {
+              window.parent.postMessage(errorData, '*');
             }
           </script>
         </head>
