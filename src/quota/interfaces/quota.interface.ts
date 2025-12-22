@@ -22,6 +22,7 @@ export interface FetchAvailableModelsResponse {
 export interface QuotaStatusResponse {
   totalAccounts: number;
   accounts: AccountQuotaStatus[];
+  groupedQuota?: GroupedQuotaStatus;
 }
 
 export interface AccountQuotaStatus {
@@ -36,4 +37,17 @@ export interface ModelQuotaStatus {
   quota: number;
   resetTime?: string;
   status: 'available' | 'exhausted' | 'unknown';
+}
+
+export interface GroupedQuotaStatus {
+  groups: QuotaGroup[];
+}
+
+export interface QuotaGroup {
+  name: string;
+  displayName: string;
+  models: string[];
+  totalQuota: number;
+  averageQuota: number;
+  status: 'available' | 'limited' | 'exhausted';
 }

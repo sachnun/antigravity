@@ -102,6 +102,10 @@ export class TransformerService {
         : 'claude-sonnet-4-5';
     }
 
+    if (model === 'gemini-2.5-flash') {
+      return reasoningEffort ? 'gemini-2.5-flash-thinking' : 'gemini-2.5-flash';
+    }
+
     return MODEL_ALIAS_MAP[model] || model;
   }
 

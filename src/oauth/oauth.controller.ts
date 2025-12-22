@@ -6,20 +6,44 @@ import {
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { OAuthService } from './oauth.service';
 
 @Controller('oauth')
+@ApiTags('OAuth')
 export class OAuthController {
   constructor(private readonly oauthService: OAuthService) {}
 
   @Get('authorize')
+  @ApiOperation({
+    summary: 'Start OAuth flow',
+    description: 'Redirects to Google OAuth authorization page',
+  })
+  @ApiResponse({ status: 302, description: 'Redirect to Google OAuth' })
   authorize(@Res() res: Response) {
     const authUrl = this.oauthService.getAuthorizationUrl();
     res.redirect(authUrl);
   }
 
   @Get('callback')
+  @ApiOperation({
+    summary: 'OAuth callback',
+    description:
+      'Handles OAuth callback from Google and exchanges code for tokens',
+  })
+  @ApiQuery({
+    name: 'code',
+    required: false,
+    description: 'Authorization code from Google',
+  })
+  @ApiQuery({ name: 'error', required: false, description: 'Error from OAuth' })
+  @ApiResponse({
+    status: 200,
+    description: 'Success page with account credentials',
+  })
+  @ApiResponse({ status: 400, description: 'Missing authorization code' })
+  @ApiResponse({ status: 500, description: 'Token exchange failed' })
   async callback(
     @Query('code') code: string,
     @Query('error') error: string,
@@ -161,6 +185,11 @@ export class OAuthController {
   }
 
   @Get('status')
+  @ApiOperation({
+    summary: 'Get OAuth status',
+    description: 'Returns OAuth configuration information',
+  })
+  @ApiResponse({ status: 200, description: 'OAuth status' })
   getStatus() {
     return {
       authUrl: this.oauthService.getAuthorizationUrl(),

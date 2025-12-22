@@ -7,9 +7,16 @@ import {
   QuotaStatusResponse,
   AccountQuotaStatus,
   ModelQuotaStatus,
+  GroupedQuotaStatus,
+  QuotaGroup,
 } from './interfaces';
 import { AccountState } from '../accounts/interfaces';
-import { BASE_URLS, USER_AGENT } from '../antigravity/constants';
+import {
+  BASE_URLS,
+  USER_AGENT,
+  QUOTA_GROUPS,
+  GROUP_DISPLAY_NAMES,
+} from '../antigravity/constants';
 
 @Injectable()
 export class QuotaService {
@@ -140,9 +147,51 @@ export class QuotaService {
       };
     });
 
+    const groupedQuota = this.calculateGroupedQuota(accountStatuses);
+
     return {
       totalAccounts: accounts.length,
       accounts: accountStatuses,
+      groupedQuota,
     };
+  }
+
+  private calculateGroupedQuota(
+    accounts: AccountQuotaStatus[],
+  ): GroupedQuotaStatus {
+    const groups: QuotaGroup[] = [];
+
+    for (const [groupName, modelNames] of Object.entries(QUOTA_GROUPS)) {
+      const quotas: number[] = [];
+
+      for (const account of accounts) {
+        for (const model of account.models) {
+          if (modelNames.includes(model.modelName)) {
+            quotas.push(model.quota);
+          }
+        }
+      }
+
+      const totalQuota = quotas.reduce((sum, q) => sum + q, 0);
+      const averageQuota = quotas.length > 0 ? totalQuota / quotas.length : 0;
+
+      let status: QuotaGroup['status'] = 'available';
+      if (averageQuota <= this.quotaThreshold) {
+        status = 'exhausted';
+      } else if (averageQuota < 0.3) {
+        status = 'limited';
+      }
+
+      groups.push({
+        name: groupName,
+        displayName: GROUP_DISPLAY_NAMES[groupName] || groupName,
+        models: modelNames,
+        totalQuota,
+        averageQuota,
+        status,
+      });
+    }
+
+    return { groups };
   }
 }

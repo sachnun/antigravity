@@ -22,15 +22,19 @@ Visit `http://localhost:3000/oauth/authorize` to authenticate with Google.
 | `POST /v1/messages`         | Anthropic |
 | `GET /v1/models`            | OpenAI    |
 | `GET /v1/quota`             | -         |
+| `GET /docs`                 | Swagger   |
 
 ## Models
 
 - `gemini-3-pro-preview`
 - `gemini-3-flash`
+- `gemini-2.5-flash`
+- `gemini-2.5-flash-lite`
 - `claude-sonnet-4-5`
 - `claude-opus-4-5`
+- `gpt-oss-120b-medium`
 
-_as of 16-12-2025_
+_as of 22-12-2025_
 
 ## Reasoning/Thinking Mode
 
@@ -50,6 +54,7 @@ Enable reasoning mode by setting `reasoning_effort` in your request:
 **Model behavior**:
 
 - `gemini-3-pro-preview`: Uses `thinkingLevel` (low/high)
+- `gemini-2.5-flash`: Uses `thinkingBudget`
 - `claude-sonnet-4-5`: Uses `thinkingBudget` (8192/16384/32768 tokens)
 - `claude-opus-4-5`: Always uses thinking mode (parameter optional)
 

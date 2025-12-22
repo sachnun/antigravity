@@ -20,8 +20,14 @@ describe('AntigravityController', () => {
 
   const createMockResponse = () => {
     const setHeader = jest.fn();
+    const mockRes = {
+      setHeader,
+      req: {
+        headers: {},
+      },
+    } as unknown as Response;
     return {
-      response: { setHeader } as unknown as Response,
+      response: mockRes,
       setHeader,
     };
   };
@@ -63,7 +69,10 @@ describe('AntigravityController', () => {
 
       const result = await controller.chatCompletions(dto, mockResponse);
 
-      expect(mockAntigravityService.chatCompletion).toHaveBeenCalledWith(dto);
+      expect(mockAntigravityService.chatCompletion).toHaveBeenCalledWith(
+        dto,
+        undefined,
+      );
       expect(
         mockAntigravityService.chatCompletionStream,
       ).not.toHaveBeenCalled();
@@ -103,6 +112,7 @@ describe('AntigravityController', () => {
       expect(mockAntigravityService.chatCompletionStream).toHaveBeenCalledWith(
         dto,
         mockResponse,
+        undefined,
       );
       expect(mockAntigravityService.chatCompletion).not.toHaveBeenCalled();
       expect(result).toBeUndefined();

@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { AccountsService } from './accounts/accounts.service';
@@ -9,12 +10,26 @@ import { json, urlencoded } from 'express';
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
-  // Disable default bodyParser to allow custom configuration below
   const app = await NestFactory.create(AppModule, { bodyParser: false });
 
-  // Increase payload limit to 50mb to allow large text inputs
   app.use(json({ limit: '50mb' }));
   app.use(urlencoded({ extended: true, limit: '50mb' }));
+
+  const config = new DocumentBuilder()
+    .setTitle('Antigravity API')
+    .setDescription(
+      'OpenAI and Anthropic compatible API proxy powered by Google Antigravity',
+    )
+    .setVersion('1.0')
+    .addBearerAuth()
+    .addTag('OpenAI Compatible', 'OpenAI-compatible chat completions API')
+    .addTag('Anthropic Compatible', 'Anthropic-compatible messages API')
+    .addTag('Models', 'Model listing and information')
+    .addTag('OAuth', 'Authentication flow')
+    .addTag('Accounts', 'Account management')
+    .build();
+  const documentFactory = () => SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('docs', app, documentFactory);
 
   app.useGlobalFilters(new OpenAIExceptionFilter());
 
@@ -68,6 +83,7 @@ async function bootstrap() {
   logger.log(`  GET  /v1/models           - List models`);
   logger.log(`  GET  /accounts/status     - Account status`);
   logger.log(`  GET  /oauth/authorize     - Start OAuth flow`);
+  logger.log(`  GET  /docs                - Swagger UI`);
   logger.log('='.repeat(60));
 }
 void bootstrap();

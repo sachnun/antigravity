@@ -100,6 +100,7 @@ export class AntigravityService {
     operation: (accountState: AccountState) => Promise<T>,
     apiType: ApiType,
     res?: Response,
+    forcedAccountId?: string,
   ): Promise<T> {
     const maxAttempts = Math.min(
       this.maxRetryAccounts,
@@ -107,7 +108,10 @@ export class AntigravityService {
     );
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const accountState = this.accountsService.getNextAccount();
+      const accountState =
+        forcedAccountId && attempt === 0
+          ? this.accountsService.getAccountById(forcedAccountId)
+          : this.accountsService.getNextAccount();
 
       if (!accountState) {
         const retryAfter = this.getRetryAfterSeconds();
@@ -219,40 +223,47 @@ export class AntigravityService {
 
   async chatCompletion(
     dto: ChatCompletionRequestDto,
+    forcedAccountId?: string,
   ): Promise<ChatCompletionResponse> {
     this.checkAccountsExist();
     const requestId = `chatcmpl-${uuidv4()}`;
 
-    return this.withAccountRetry(async (accountState) => {
-      const projectId = await this.accountsService.getProjectId(accountState);
-      const antigravityRequest = this.transformerService.transformRequest(
-        dto,
-        projectId,
-      );
+    return this.withAccountRetry(
+      async (accountState) => {
+        const projectId = await this.accountsService.getProjectId(accountState);
+        const antigravityRequest = this.transformerService.transformRequest(
+          dto,
+          projectId,
+        );
 
-      this.logger.debug(
-        `Chat completion: model=${dto.model}, account=${accountState.id} (${accountState.credential.email}), messages=${dto.messages.length}`,
-      );
+        this.logger.debug(
+          `Chat completion: model=${dto.model}, account=${accountState.id} (${accountState.credential.email}), messages=${dto.messages.length}`,
+        );
 
-      const response = await this.makeRequest<AntigravityResponse>(
-        ':generateContent',
-        antigravityRequest,
-        accountState,
-      );
+        const response = await this.makeRequest<AntigravityResponse>(
+          ':generateContent',
+          antigravityRequest,
+          accountState,
+        );
 
-      this.accountsService.markSuccess(accountState.id);
+        this.accountsService.markSuccess(accountState.id);
 
-      return this.transformerService.transformResponse(
-        response,
-        dto.model,
-        requestId,
-      );
-    }, 'openai');
+        return this.transformerService.transformResponse(
+          response,
+          dto.model,
+          requestId,
+        );
+      },
+      'openai',
+      undefined,
+      forcedAccountId,
+    );
   }
 
   async chatCompletionStream(
     dto: ChatCompletionRequestDto,
     res: Response,
+    forcedAccountId?: string,
   ): Promise<void> {
     this.checkAccountsExist();
     const requestId = `chatcmpl-${uuidv4()}`;
@@ -316,6 +327,7 @@ export class AntigravityService {
       },
       'openai',
       res,
+      forcedAccountId,
     ).catch(async (error) => {
       if (!res.headersSent) {
         throw error;
@@ -371,38 +383,45 @@ export class AntigravityService {
   async anthropicMessages(
     dto: AnthropicMessagesRequestDto,
     messageId: string,
+    forcedAccountId?: string,
   ): Promise<AnthropicMessagesResponse> {
     this.checkAccountsExist();
 
-    return this.withAccountRetry(async (accountState) => {
-      const projectId = await this.accountsService.getProjectId(accountState);
-      const antigravityRequest =
-        this.anthropicTransformerService.transformRequest(dto, projectId);
+    return this.withAccountRetry(
+      async (accountState) => {
+        const projectId = await this.accountsService.getProjectId(accountState);
+        const antigravityRequest =
+          this.anthropicTransformerService.transformRequest(dto, projectId);
 
-      this.logger.debug(
-        `Anthropic messages: model=${dto.model}, account=${accountState.id} (${accountState.credential.email}), messages=${dto.messages.length}`,
-      );
+        this.logger.debug(
+          `Anthropic messages: model=${dto.model}, account=${accountState.id} (${accountState.credential.email}), messages=${dto.messages.length}`,
+        );
 
-      const response = await this.makeRequest<AntigravityResponse>(
-        ':generateContent',
-        antigravityRequest,
-        accountState,
-      );
+        const response = await this.makeRequest<AntigravityResponse>(
+          ':generateContent',
+          antigravityRequest,
+          accountState,
+        );
 
-      this.accountsService.markSuccess(accountState.id);
+        this.accountsService.markSuccess(accountState.id);
 
-      return this.anthropicTransformerService.transformResponse(
-        response,
-        dto.model,
-        messageId,
-      );
-    }, 'anthropic');
+        return this.anthropicTransformerService.transformResponse(
+          response,
+          dto.model,
+          messageId,
+        );
+      },
+      'anthropic',
+      undefined,
+      forcedAccountId,
+    );
   }
 
   async anthropicMessagesStream(
     dto: AnthropicMessagesRequestDto,
     res: Response,
     messageId: string,
+    forcedAccountId?: string,
   ): Promise<void> {
     this.checkAccountsExist();
 
@@ -475,6 +494,7 @@ export class AntigravityService {
       },
       'anthropic',
       res,
+      forcedAccountId,
     ).catch(async (error) => {
       if (!res.headersSent) {
         throw error;
