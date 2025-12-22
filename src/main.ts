@@ -4,10 +4,17 @@ import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { AccountsService } from './accounts/accounts.service';
 import { OpenAIExceptionFilter } from './common/filters/openai-exception.filter';
+import { json, urlencoded } from 'express';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule);
+
+  // Disable default bodyParser to allow custom configuration below
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+
+  // Increase payload limit to 50mb to allow large text inputs
+  app.use(json({ limit: '50mb' }));
+  app.use(urlencoded({ extended: true, limit: '50mb' }));
 
   app.useGlobalFilters(new OpenAIExceptionFilter());
 
