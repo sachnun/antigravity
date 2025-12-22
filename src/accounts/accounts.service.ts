@@ -1,6 +1,13 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import { QuotaService } from '../quota/quota.service';
 import {
   AccountCredential,
   AccountState,
@@ -40,7 +47,11 @@ export class AccountsService implements OnModuleInit {
   private readonly clientId: string;
   private readonly clientSecret: string;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    @Inject(forwardRef(() => QuotaService))
+    private readonly quotaService: QuotaService,
+  ) {
     this.COOLDOWN_DURATION_MS =
       this.configService.get<number>('accounts.cooldownDurationMs') || 60000;
     this.clientId =
@@ -72,6 +83,7 @@ export class AccountsService implements OnModuleInit {
         status: 'ready' as const,
         requestCount: 0,
         errorCount: 0,
+        consecutiveErrors: 0,
       };
       this.accountStatesMap.set(id, state);
       this.accountsList.push(state);
@@ -114,16 +126,56 @@ export class AccountsService implements OnModuleInit {
     return this.accountsList.filter((s) => s.status === 'ready');
   }
 
-  getNextAccount(): AccountState | null {
+  getNextAccount(modelName?: string): AccountState | null {
     const readyAccounts = this.getReadyAccounts();
 
     if (readyAccounts.length === 0) {
       return null;
     }
 
-    this.currentIndex = this.currentIndex % readyAccounts.length;
-    const selected = readyAccounts[this.currentIndex];
-    this.currentIndex = (this.currentIndex + 1) % readyAccounts.length;
+    // scoring system
+    const scoredAccounts = readyAccounts.map((state) => {
+      let score = 0;
+
+      // prioritize quota if available
+      if (modelName) {
+        const quotaStatus = this.quotaService.getQuotaStatus([
+          { id: state.id, email: state.credential.email },
+        ]);
+        const accountQuota = quotaStatus.accounts[0]?.models.find(
+          (m) => m.modelName === modelName,
+        );
+
+        if (accountQuota) {
+          // high score for available quota
+          score += accountQuota.quota * 1000;
+          if (accountQuota.status === 'exhausted') {
+            score -= 5000; // heavy penalty
+          }
+        }
+      }
+
+      // least used (penalty for high request count)
+      score -= state.requestCount * 0.1;
+
+      // recency (prefer older used accounts)
+      if (state.lastUsed) {
+        const secondsSinceLastUse = (Date.now() - state.lastUsed) / 1000;
+        score += Math.min(secondsSinceLastUse, 3600); // max 1 hour bonus
+      } else {
+        score += 4000; // never used accounts get high priority
+      }
+
+      return { state, score };
+    });
+
+    // sort by score descending
+    scoredAccounts.sort((a, b) => b.score - a.score);
+
+    const selected = scoredAccounts[0].state;
+
+    // update current index for legacy compatibility if needed
+    this.currentIndex = this.accountsList.indexOf(selected);
 
     return selected;
   }
@@ -147,10 +199,16 @@ export class AccountsService implements OnModuleInit {
     const state = this.accountStatesMap.get(accountId);
     if (state) {
       state.status = 'cooldown';
-      state.cooldownUntil = Date.now() + this.COOLDOWN_DURATION_MS;
+      state.consecutiveErrors++;
+      const backoffFactor = Math.pow(
+        2,
+        Math.min(state.consecutiveErrors - 1, 6),
+      ); // max 64x
+      state.cooldownUntil =
+        Date.now() + this.COOLDOWN_DURATION_MS * backoffFactor;
       state.errorCount++;
       this.logger.warn(
-        `Account ${accountId} (${state.credential.email}) marked as cooldown until ${new Date(state.cooldownUntil).toISOString()}`,
+        `Account ${accountId} (${state.credential.email}) marked as cooldown (attempt ${state.consecutiveErrors}) until ${new Date(state.cooldownUntil).toISOString()}`,
       );
     }
   }
@@ -171,8 +229,10 @@ export class AccountsService implements OnModuleInit {
     if (state) {
       state.requestCount++;
       state.lastUsed = Date.now();
-      if (state.status === 'error') {
+      state.consecutiveErrors = 0; // reset on success
+      if (state.status === 'error' || state.status === 'cooldown') {
         state.status = 'ready';
+        state.cooldownUntil = undefined;
       }
     }
   }
@@ -211,6 +271,7 @@ export class AccountsService implements OnModuleInit {
       status: 'ready',
       requestCount: 0,
       errorCount: 0,
+      consecutiveErrors: 0,
     };
 
     this.accountStatesMap.set(id, newState);
@@ -229,6 +290,7 @@ export class AccountsService implements OnModuleInit {
       lastUsed: state.lastUsed,
       requestCount: state.requestCount,
       errorCount: state.errorCount,
+      consecutiveErrors: state.consecutiveErrors,
     }));
 
     return {

@@ -14,6 +14,7 @@ export interface AccountState {
   lastUsed?: number;
   requestCount: number;
   errorCount: number;
+  consecutiveErrors: number;
   discoveredProjectId?: string;
 }
 
@@ -34,4 +35,5 @@ export interface AccountPublicInfo {
   lastUsed?: number;
   requestCount: number;
   errorCount: number;
+  consecutiveErrors: number;
 }

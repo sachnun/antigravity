@@ -101,6 +101,7 @@ export class AntigravityService {
     apiType: ApiType,
     res?: Response,
     forcedAccountId?: string,
+    modelName?: string,
   ): Promise<T> {
     const maxAttempts = Math.min(
       this.maxRetryAccounts,
@@ -111,7 +112,7 @@ export class AntigravityService {
       const accountState =
         forcedAccountId && attempt === 0
           ? this.accountsService.getAccountById(forcedAccountId)
-          : this.accountsService.getNextAccount();
+          : this.accountsService.getNextAccount(modelName);
 
       if (!accountState) {
         const retryAfter = this.getRetryAfterSeconds();
@@ -124,10 +125,10 @@ export class AntigravityService {
       try {
         return await operation(accountState);
       } catch (error) {
-        if (this.isRateLimitError(error)) {
+        if (this.isRateLimitError(error) || this.isQuotaExceededError(error)) {
           this.accountsService.markCooldown(accountState.id);
           this.logger.warn(
-            `Rate limited on account ${accountState.id} (${accountState.credential.email}), trying next account...`,
+            `Rate limit or quota exceeded on account ${accountState.id} (${accountState.credential.email}), trying next account...`,
           );
           continue;
         }
@@ -257,6 +258,7 @@ export class AntigravityService {
       'openai',
       undefined,
       forcedAccountId,
+      dto.model,
     );
   }
 
@@ -328,6 +330,7 @@ export class AntigravityService {
       'openai',
       res,
       forcedAccountId,
+      dto.model,
     ).catch(async (error) => {
       if (!res.headersSent) {
         throw error;
@@ -414,6 +417,7 @@ export class AntigravityService {
       'anthropic',
       undefined,
       forcedAccountId,
+      dto.model,
     );
   }
 
@@ -495,6 +499,7 @@ export class AntigravityService {
       'anthropic',
       res,
       forcedAccountId,
+      dto.model,
     ).catch(async (error) => {
       if (!res.headersSent) {
         throw error;
@@ -509,6 +514,16 @@ export class AntigravityService {
     }
     if (axios.isAxiosError(error)) {
       return error.response?.status === 429;
+    }
+    return false;
+  }
+
+  private isQuotaExceededError(error: unknown): boolean {
+    if (error instanceof HttpException) {
+      return error.getStatus() === 403;
+    }
+    if (axios.isAxiosError(error)) {
+      return error.response?.status === 403;
     }
     return false;
   }
