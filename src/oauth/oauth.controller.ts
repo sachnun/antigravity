@@ -137,7 +137,7 @@ export class OAuthController {
           <p>Copy this to your <code>.env</code> file:</p>
           <pre id="env-content">ANTIGRAVITY_ACCOUNTS_${result.accountNumber}='${escapedJson}'</pre>
           <button class="copy-btn" onclick="copyToClipboard('env-content', this)">Copy to Clipboard</button>
-          
+
           <div class="note">
             <strong>Adding more accounts?</strong><br>
             Just visit <a href="/oauth/authorize" style="color: #3b82f6;">/oauth/authorize</a> again to add another account.<br>
@@ -153,6 +153,21 @@ export class OAuthController {
           <p>Visit <a href="/accounts/status" style="color: #3b82f6;">/accounts/status</a> to see all configured accounts.</p>
 
           <script>
+            // Communicate with parent window if exists (Popup Mode)
+            const messageData = {
+              type: 'OAUTH_SUCCESS',
+              email: '${result.email}',
+              accountNumber: ${result.accountNumber},
+              envText: "ANTIGRAVITY_ACCOUNTS_${result.accountNumber}='${escapedJson}'"
+            };
+
+            if (window.opener) {
+              window.opener.postMessage(messageData, '*');
+            } else if (window.parent !== window) {
+              // Iframe / Modal Mode
+              window.parent.postMessage(messageData, '*');
+            }
+
             function copyToClipboard(elementId, button) {
               const text = document.getElementById(elementId).textContent;
               navigator.clipboard.writeText(text).then(() => {
@@ -173,7 +188,25 @@ export class OAuthController {
       const message = err instanceof Error ? err.message : 'Unknown error';
       res.status(500).send(`
         <html>
-        <head><title>OAuth Error</title></head>
+        <head>
+          <title>OAuth Error</title>
+          <style>
+            body { font-family: system-ui, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; background: #0f0f0f; color: #e0e0e0; text-align: center; }
+            h1 { color: #ef4444; }
+            a { color: #3b82f6; }
+          </style>
+          <script>
+            const errorData = {
+              type: 'OAUTH_ERROR',
+              message: '${message.replace(/'/g, "\\'")}'
+            };
+            if (window.opener) {
+              window.opener.postMessage(errorData, '*');
+            } else if (window.parent !== window) {
+              window.parent.postMessage(errorData, '*');
+            }
+          </script>
+        </head>
         <body>
           <h1>Token Exchange Failed</h1>
           <p>Error: ${message}</p>

@@ -1,5 +1,4 @@
-import { Controller, Get, Header, Res } from '@nestjs/common';
-import type { Response } from 'express';
+import { Controller, Get, Header } from '@nestjs/common';
 import { AppService } from './app.service';
 import { AccountsService } from './accounts/accounts.service';
 import { AntigravityService } from './antigravity/antigravity.service';
@@ -39,10 +38,20 @@ export class AppController {
     return this.appService.getDashboard(status, quotaStatus);
   }
 
-  @Get('quota/refresh')
-  async refreshQuota(@Res() res: Response) {
-    // Force refresh from upstream
+  @Get('api/dashboard')
+  async getDashboardData() {
+    const status = this.accountsService.getStatus();
+    const quotaAccounts = this.accountsService.getAccountsForQuotaStatus();
+    const quotaStatus = this.quotaService.getQuotaStatus(quotaAccounts);
+    return { status, quotaStatus };
+  }
+
+  @Get('api/quota/refresh')
+  async refreshQuotaApi() {
     await this.antigravityService.getQuotaStatus();
-    res.redirect('/');
+    const status = this.accountsService.getStatus();
+    const quotaAccounts = this.accountsService.getAccountsForQuotaStatus();
+    const quotaStatus = this.quotaService.getQuotaStatus(quotaAccounts);
+    return { status, quotaStatus };
   }
 }

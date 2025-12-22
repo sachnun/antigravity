@@ -6,6 +6,8 @@ import { ConfigService } from '@nestjs/config';
 import { AccountsService } from './accounts/accounts.service';
 import { OpenAIExceptionFilter } from './common/filters/openai-exception.filter';
 import { json, urlencoded } from 'express';
+import { join } from 'path';
+import * as express from 'express';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -14,6 +16,9 @@ async function bootstrap() {
 
   app.use(json({ limit: '50mb' }));
   app.use(urlencoded({ extended: true, limit: '50mb' }));
+
+  // Serve static files from the public directory
+  app.use('/public', express.static(join(__dirname, '..', 'public')));
 
   const config = new DocumentBuilder()
     .setTitle('Antigravity API')
@@ -29,7 +34,9 @@ async function bootstrap() {
     .addTag('Accounts', 'Account management')
     .build();
   const documentFactory = () => SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('docs', app, documentFactory);
+  SwaggerModule.setup('docs', app, documentFactory, {
+    customJs: '/public/swagger-theme.js',
+  });
 
   app.useGlobalFilters(new OpenAIExceptionFilter());
 
@@ -53,19 +60,8 @@ async function bootstrap() {
     logger.warn('');
     logger.warn('To use the Antigravity API, you need to add accounts.');
     logger.warn('');
-    logger.warn('Step 1: Start OAuth flow:');
+    logger.warn('Start OAuth flow:');
     logger.warn(`  Visit: http://localhost:${port}/oauth/authorize`);
-    logger.warn('');
-    logger.warn('Step 2: Copy the output to your .env file:');
-    logger.warn(
-      '  ANTIGRAVITY_ACCOUNTS_1=\'{"email":"...","accessToken":"...","refreshToken":"...","expiryDate":...}\'',
-    );
-    logger.warn('');
-    logger.warn('Step 3: Restart the server');
-    logger.warn('');
-    logger.warn('For multiple accounts (rotation), add more:');
-    logger.warn("  ANTIGRAVITY_ACCOUNTS_2='...'");
-    logger.warn("  ANTIGRAVITY_ACCOUNTS_3='...'");
     logger.warn('='.repeat(60));
   } else {
     const count = accountsService.getAccountCount();
