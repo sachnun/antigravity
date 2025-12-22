@@ -139,7 +139,7 @@ export class AccountsService implements OnModuleInit {
   getAccountsForQuotaStatus(): Array<{ id: string; email: string }> {
     return this.accountsList.map((state) => ({
       id: state.id,
-      email: this.maskEmail(state.credential.email),
+      email: state.credential.email,
     }));
   }
 
@@ -223,7 +223,7 @@ export class AccountsService implements OnModuleInit {
   getStatus(): AccountStatusResponse {
     const accounts: AccountPublicInfo[] = this.accountsList.map((state) => ({
       id: state.id,
-      email: this.maskEmail(state.credential.email),
+      email: state.credential.email,
       status: state.status,
       cooldownUntil: state.cooldownUntil,
       lastUsed: state.lastUsed,
