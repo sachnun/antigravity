@@ -31,16 +31,25 @@ export class AntigravityController {
 
     res.setHeader('x-request-id', requestId);
 
+    const forcedAccountId = res.req.headers['x-antigravity-account'] as string;
+
     if (dto.stream) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
-      await this.antigravityService.chatCompletionStream(dto, res);
+      await this.antigravityService.chatCompletionStream(
+        dto,
+        res,
+        forcedAccountId,
+      );
       return;
     }
 
-    const result = await this.antigravityService.chatCompletion(dto);
+    const result = await this.antigravityService.chatCompletion(
+      dto,
+      forcedAccountId,
+    );
     res.setHeader('openai-processing-ms', String(Date.now() - startTime));
     return result;
   }
@@ -63,6 +72,8 @@ export class AntigravityController {
 
     res.setHeader('x-request-id', messageId);
 
+    const forcedAccountId = res.req.headers['x-antigravity-account'] as string;
+
     if (dto.stream) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
@@ -72,11 +83,16 @@ export class AntigravityController {
         dto,
         res,
         messageId,
+        forcedAccountId,
       );
       return;
     }
 
-    return this.antigravityService.anthropicMessages(dto, messageId);
+    return this.antigravityService.anthropicMessages(
+      dto,
+      messageId,
+      forcedAccountId,
+    );
   }
 
   @Get('quota')
