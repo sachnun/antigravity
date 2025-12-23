@@ -1,5 +1,7 @@
 export const AVAILABLE_MODELS = [
   'gemini-3-pro-preview',
+  'gemini-3-pro-high',
+  'gemini-3-pro-low',
   'gemini-3-flash',
   'gemini-2.5-flash',
   'gemini-2.5-flash-lite',
@@ -30,6 +32,8 @@ export const DEFAULT_MAX_TOKENS: Record<string, number> = {
   'claude-opus-4-5': 64000,
   'claude-sonnet-4-5': 64000,
   'gemini-3-pro-preview': 65536,
+  'gemini-3-pro-high': 65536,
+  'gemini-3-pro-low': 65536,
   'gemini-3-flash': 65536,
   'gemini-2.5-flash': 65536,
   'gemini-2.5-flash-lite': 65536,
@@ -38,6 +42,8 @@ export const DEFAULT_MAX_TOKENS: Record<string, number> = {
 
 export const MODEL_OWNERS: Record<string, string> = {
   'gemini-3-pro-preview': 'google',
+  'gemini-3-pro-high': 'google',
+  'gemini-3-pro-low': 'google',
   'gemini-3-flash': 'google',
   'gemini-2.5-flash': 'google',
   'gemini-2.5-flash-lite': 'google',
@@ -48,7 +54,11 @@ export const MODEL_OWNERS: Record<string, string> = {
 
 export const QUOTA_GROUPS: Record<string, string[]> = {
   claude: ['claude-sonnet-4-5', 'claude-opus-4-5', 'gpt-oss-120b-medium'],
-  'gemini-3-pro': ['gemini-3-pro-preview'],
+  'gemini-3-pro': [
+    'gemini-3-pro-preview',
+    'gemini-3-pro-high',
+    'gemini-3-pro-low',
+  ],
   'gemini-3-flash': ['gemini-3-flash'],
   'gemini-2.5-flash': ['gemini-2.5-flash', 'gemini-2.5-flash-lite'],
 };

@@ -12,17 +12,17 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 export class AnthropicTextBlock {
   @ApiProperty({ enum: ['text'] })
   @IsString()
-  type: 'text';
+  type!: 'text';
 
   @ApiProperty()
   @IsString()
-  text: string;
+  text!: string;
 }
 
 export class AnthropicImageSource {
   @ApiProperty({ enum: ['base64', 'url'] })
   @IsString()
-  type: 'base64' | 'url';
+  type!: 'base64' | 'url';
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -31,43 +31,43 @@ export class AnthropicImageSource {
 
   @ApiProperty()
   @IsString()
-  data: string;
+  data!: string;
 }
 
 export class AnthropicImageBlock {
   @ApiProperty({ enum: ['image'] })
   @IsString()
-  type: 'image';
+  type!: 'image';
 
   @ApiProperty({ type: AnthropicImageSource })
-  source: AnthropicImageSource;
+  source!: AnthropicImageSource;
 }
 
 export class AnthropicToolUseBlock {
   @ApiProperty({ enum: ['tool_use'] })
   @IsString()
-  type: 'tool_use';
+  type!: 'tool_use';
 
   @ApiProperty()
   @IsString()
-  id: string;
+  id!: string;
 
   @ApiProperty()
   @IsString()
-  name: string;
+  name!: string;
 
   @ApiProperty()
-  input: Record<string, unknown>;
+  input!: Record<string, unknown>;
 }
 
 export class AnthropicToolResultBlock {
   @ApiProperty({ enum: ['tool_result'] })
   @IsString()
-  type: 'tool_result';
+  type!: 'tool_result';
 
   @ApiProperty()
   @IsString()
-  tool_use_id: string;
+  tool_use_id!: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -93,7 +93,7 @@ export interface AnthropicMessageParam {
 export class AnthropicToolInputSchema {
   @ApiProperty({ enum: ['object'] })
   @IsString()
-  type: 'object';
+  type!: 'object';
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -108,22 +108,22 @@ export class AnthropicToolInputSchema {
 export class AnthropicTool {
   @ApiProperty({ example: 'get_weather' })
   @IsString()
-  name: string;
+  name!: string;
 
   @ApiProperty({ example: 'Get current weather' })
   @IsString()
-  description: string;
+  description!: string;
 
   @ApiProperty({ type: AnthropicToolInputSchema })
   @ValidateNested()
   @Type(() => AnthropicToolInputSchema)
-  input_schema: AnthropicToolInputSchema;
+  input_schema!: AnthropicToolInputSchema;
 }
 
 export class AnthropicThinkingConfig {
   @ApiProperty({ enum: ['enabled', 'disabled'] })
   @IsString()
-  type: 'enabled' | 'disabled';
+  type!: 'enabled' | 'disabled';
 
   @ApiPropertyOptional({ example: 8192 })
   @IsOptional()
@@ -134,15 +134,15 @@ export class AnthropicThinkingConfig {
 export class AnthropicMessagesRequestDto {
   @ApiProperty({ example: 'claude-sonnet-4-5' })
   @IsString()
-  model: string;
+  model!: string;
 
   @ApiProperty({ type: 'array' })
   @IsArray()
-  messages: AnthropicMessageParam[];
+  messages!: AnthropicMessageParam[];
 
   @ApiProperty({ example: 1024 })
   @IsNumber()
-  max_tokens: number;
+  max_tokens!: number;
 
   @ApiPropertyOptional({ example: 'You are a helpful assistant.' })
   @IsOptional()

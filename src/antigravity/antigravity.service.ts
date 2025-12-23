@@ -222,6 +222,15 @@ export class AntigravityService {
     });
   }
 
+  /**
+   * Processes a chat completion request using the OpenAI-compatible API format.
+   *
+   * @param dto - The chat completion request in OpenAI format
+   * @param forcedAccountId - Optional account ID to force using a specific account
+   * @returns Promise resolving to an OpenAI-compatible chat completion response
+   * @throws {HttpException} When no accounts are configured (503)
+   * @throws {HttpException} When all accounts are rate limited (429)
+   */
   async chatCompletion(
     dto: ChatCompletionRequestDto,
     forcedAccountId?: string,
@@ -262,6 +271,15 @@ export class AntigravityService {
     );
   }
 
+  /**
+   * Processes a streaming chat completion request using SSE (Server-Sent Events).
+   *
+   * @param dto - The chat completion request in OpenAI format
+   * @param res - The Express response object for streaming
+   * @param forcedAccountId - Optional account ID to force using a specific account
+   * @throws {HttpException} When no accounts are configured (503)
+   * @throws {HttpException} When all accounts are rate limited (429)
+   */
   async chatCompletionStream(
     dto: ChatCompletionRequestDto,
     res: Response,
@@ -339,6 +357,11 @@ export class AntigravityService {
     });
   }
 
+  /**
+   * Returns a list of available models in OpenAI-compatible format.
+   *
+   * @returns List of available models with their metadata
+   */
   listModels(): ModelsResponse {
     const now = Math.floor(Date.now() / 1000);
 
@@ -353,6 +376,12 @@ export class AntigravityService {
     };
   }
 
+  /**
+   * Fetches and returns the quota status for all accounts.
+   * Refreshes quota data from upstream before returning.
+   *
+   * @returns Promise resolving to quota status for all accounts
+   */
   async getQuotaStatus(): Promise<QuotaStatusResponse> {
     const readyAccounts = this.accountsService.getReadyAccounts();
 
@@ -383,6 +412,16 @@ export class AntigravityService {
     }
   }
 
+  /**
+   * Processes a messages request using the Anthropic-compatible API format.
+   *
+   * @param dto - The messages request in Anthropic format
+   * @param messageId - Unique identifier for the message
+   * @param forcedAccountId - Optional account ID to force using a specific account
+   * @returns Promise resolving to an Anthropic-compatible messages response
+   * @throws {HttpException} When no accounts are configured (503)
+   * @throws {HttpException} When all accounts are rate limited (429)
+   */
   async anthropicMessages(
     dto: AnthropicMessagesRequestDto,
     messageId: string,
@@ -421,6 +460,16 @@ export class AntigravityService {
     );
   }
 
+  /**
+   * Processes a streaming messages request using the Anthropic-compatible SSE format.
+   *
+   * @param dto - The messages request in Anthropic format
+   * @param res - The Express response object for streaming
+   * @param messageId - Unique identifier for the message
+   * @param forcedAccountId - Optional account ID to force using a specific account
+   * @throws {HttpException} When no accounts are configured (503)
+   * @throws {HttpException} When all accounts are rate limited (429)
+   */
   async anthropicMessagesStream(
     dto: AnthropicMessagesRequestDto,
     res: Response,
@@ -621,7 +670,11 @@ export class AntigravityService {
   }
 
   private getBaseUrl(): string {
-    return BASE_URLS[this.currentBaseUrlIndex];
+    const url = BASE_URLS[this.currentBaseUrlIndex];
+    if (!url) {
+      return BASE_URLS[0] ?? '';
+    }
+    return url;
   }
 
   private createHttpException(

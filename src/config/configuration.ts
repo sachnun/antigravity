@@ -41,13 +41,11 @@ export default () => ({
 
   proxyApiKey: process.env.PROXY_API_KEY ?? '',
 
+  // OAuth credentials must be configured via environment variables
+  // No default values to prevent accidental credential exposure
   antigravity: {
-    clientId:
-      process.env.ANTIGRAVITY_CLIENT_ID ??
-      '1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com',
-    clientSecret:
-      process.env.ANTIGRAVITY_CLIENT_SECRET ??
-      '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',
+    clientId: process.env.ANTIGRAVITY_CLIENT_ID ?? '',
+    clientSecret: process.env.ANTIGRAVITY_CLIENT_SECRET ?? '',
   },
 
   accounts: {

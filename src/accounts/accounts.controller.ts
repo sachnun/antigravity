@@ -1,7 +1,13 @@
-import { Controller, Get, Res } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Controller, Get, Res, UseGuards } from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import type { Response } from 'express';
 import { AccountsService } from './accounts.service';
+import { ApiKeyGuard } from '../common/guards/api-key.guard';
 
 @Controller('accounts')
 @ApiTags('Accounts')
@@ -11,11 +17,32 @@ export class AccountsController {
   @Get('status')
   @ApiOperation({
     summary: 'Get account status',
-    description: 'Returns status of all configured accounts',
+    description:
+      'Returns status of all configured accounts (emails are masked for security)',
   })
-  @ApiResponse({ status: 200, description: 'Account status' })
+  @ApiResponse({
+    status: 200,
+    description: 'Account status with masked emails',
+  })
   getStatus() {
-    return this.accountsService.getStatus();
+    return this.accountsService.getStatus(false);
+  }
+
+  @Get('export')
+  @UseGuards(ApiKeyGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Export account credentials',
+    description:
+      'Returns full account credentials for backup/migration. Requires API key authentication.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Account credentials for .env configuration',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized - API key required' })
+  exportCredentials() {
+    return this.accountsService.getStatus(true);
   }
 
   @Get('add')

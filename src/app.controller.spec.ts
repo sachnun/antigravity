@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AccountsService } from './accounts/accounts.service';
@@ -25,6 +26,10 @@ describe('AppController', () => {
       .mockReturnValue({ totalAccounts: 0, accounts: [] }),
   };
 
+  const mockConfigService = {
+    get: jest.fn().mockReturnValue(''),
+  };
+
   beforeEach(async () => {
     const app: TestingModule = await Test.createTestingModule({
       controllers: [AppController],
@@ -33,6 +38,7 @@ describe('AppController', () => {
         { provide: AccountsService, useValue: mockAccountsService },
         { provide: AntigravityService, useValue: mockAntigravityService },
         { provide: QuotaService, useValue: mockQuotaService },
+        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 

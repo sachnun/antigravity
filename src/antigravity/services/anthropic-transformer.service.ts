@@ -475,8 +475,9 @@ export class AnthropicTransformerService {
             delta: { type: 'thinking_delta', thinking: part.text },
           });
           const block = accumulator.contentBlocks[blockIndex];
-          if (block.type === 'thinking') {
-            block.thinking += part.text;
+          if (block && block.type === 'thinking' && 'thinking' in block) {
+            (block as { type: 'thinking'; thinking: string }).thinking +=
+              part.text;
           }
         } else {
           events.push({
@@ -485,8 +486,8 @@ export class AnthropicTransformerService {
             delta: { type: 'text_delta', text: part.text },
           });
           const block = accumulator.contentBlocks[blockIndex];
-          if (block.type === 'text') {
-            block.text += part.text;
+          if (block && block.type === 'text' && 'text' in block) {
+            (block as { type: 'text'; text: string }).text += part.text;
           }
         }
       }
@@ -542,7 +543,7 @@ export class AnthropicTransformerService {
 
       for (let i = 0; i <= accumulator.currentBlockIndex; i++) {
         const block = accumulator.contentBlocks[i];
-        if (block.type !== 'tool_use') {
+        if (block && block.type !== 'tool_use') {
           events.push({ type: 'content_block_stop', index: i });
         }
       }

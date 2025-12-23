@@ -7,7 +7,8 @@ import { AccountsService } from './accounts/accounts.service';
 import { OpenAIExceptionFilter } from './common/filters/openai-exception.filter';
 import { json, urlencoded } from 'express';
 import { join } from 'path';
-import * as express from 'express';
+import express from 'express';
+import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -16,6 +17,7 @@ async function bootstrap() {
 
   app.use(json({ limit: '50mb' }));
   app.use(urlencoded({ extended: true, limit: '50mb' }));
+  app.use(cookieParser());
 
   // Serve static files from the public directory
   app.use('/public', express.static(join(__dirname, '..', 'public')));

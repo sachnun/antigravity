@@ -9,6 +9,8 @@ describe('OAuthService', () => {
   const mockConfigService = {
     get: jest.fn((key: string) => {
       if (key === 'port') return 3000;
+      if (key === 'antigravity.clientId') return 'test-client-id';
+      if (key === 'antigravity.clientSecret') return 'test-client-secret';
       return null;
     }),
   };

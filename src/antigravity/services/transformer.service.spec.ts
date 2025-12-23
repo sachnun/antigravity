@@ -1,5 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { TransformerService } from './transformer.service';
+import { RequestTransformerService } from './request-transformer.service';
+import { ResponseTransformerService } from './response-transformer.service';
+import { StreamTransformerService } from './stream-transformer.service';
 import { ChatCompletionRequestDto } from '../dto';
 import {
   AntigravityResponse,
@@ -34,7 +37,12 @@ describe('TransformerService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [TransformerService],
+      providers: [
+        TransformerService,
+        RequestTransformerService,
+        ResponseTransformerService,
+        StreamTransformerService,
+      ],
     }).compile();
 
     service = module.get<TransformerService>(TransformerService);
@@ -76,7 +84,7 @@ describe('TransformerService', () => {
         parts: [{ text: 'You are a helpful assistant' }],
       });
       expect(result.request.contents).toHaveLength(1);
-      expect(result.request.contents[0].role).toBe('user');
+      expect(result.request.contents[0]!.role).toBe('user');
     });
   });
 
@@ -93,11 +101,11 @@ describe('TransformerService', () => {
       expect(result).toHaveProperty('model', model);
       expect(result).toHaveProperty('choices');
       expect(result.choices).toHaveLength(1);
-      expect(result.choices[0]).toHaveProperty('index', 0);
-      expect(result.choices[0]).toHaveProperty('message');
-      expect(result.choices[0].message).toHaveProperty('role', 'assistant');
-      expect(result.choices[0].message).toHaveProperty('content', 'Hi there!');
-      expect(result.choices[0]).toHaveProperty('finish_reason', 'stop');
+      expect(result.choices[0]!).toHaveProperty('index', 0);
+      expect(result.choices[0]!).toHaveProperty('message');
+      expect(result.choices[0]!.message).toHaveProperty('role', 'assistant');
+      expect(result.choices[0]!.message).toHaveProperty('content', 'Hi there!');
+      expect(result.choices[0]!).toHaveProperty('finish_reason', 'stop');
       expect(result).toHaveProperty('usage');
       expect(result.usage).toEqual({
         prompt_tokens: 10,
@@ -137,7 +145,7 @@ describe('TransformerService', () => {
       };
 
       const result = service.transformResponse(response, 'model', 'req-id');
-      expect(result.choices[0].finish_reason).toBe('stop');
+      expect(result.choices[0]!.finish_reason).toBe('stop');
     });
 
     it('should map MAX_TOKENS to length', () => {
@@ -153,7 +161,7 @@ describe('TransformerService', () => {
       };
 
       const result = service.transformResponse(response, 'model', 'req-id');
-      expect(result.choices[0].finish_reason).toBe('length');
+      expect(result.choices[0]!.finish_reason).toBe('length');
     });
 
     it('should map SAFETY to content_filter', () => {
@@ -169,7 +177,7 @@ describe('TransformerService', () => {
       };
 
       const result = service.transformResponse(response, 'model', 'req-id');
-      expect(result.choices[0].finish_reason).toBe('content_filter');
+      expect(result.choices[0]!.finish_reason).toBe('content_filter');
     });
 
     it('should map RECITATION to content_filter', () => {
@@ -185,7 +193,7 @@ describe('TransformerService', () => {
       };
 
       const result = service.transformResponse(response, 'model', 'req-id');
-      expect(result.choices[0].finish_reason).toBe('content_filter');
+      expect(result.choices[0]!.finish_reason).toBe('content_filter');
     });
 
     it('should default to stop for unknown reasons', () => {
@@ -201,7 +209,7 @@ describe('TransformerService', () => {
       };
 
       const result = service.transformResponse(response, 'model', 'req-id');
-      expect(result.choices[0].finish_reason).toBe('stop');
+      expect(result.choices[0]!.finish_reason).toBe('stop');
     });
   });
 
@@ -241,7 +249,7 @@ describe('TransformerService', () => {
         accumulator,
       );
 
-      expect(result?.choices[0].delta.role).toBe('assistant');
+      expect(result?.choices[0]!.delta.role).toBe('assistant');
     });
   });
 
@@ -254,8 +262,8 @@ describe('TransformerService', () => {
       expect(result).toHaveProperty('id', 'req-id');
       expect(result).toHaveProperty('object', 'chat.completion.chunk');
       expect(result).toHaveProperty('model', 'model');
-      expect(result.choices[0]).toHaveProperty('finish_reason', 'stop');
-      expect(result.choices[0].delta).toEqual({});
+      expect(result.choices[0]!).toHaveProperty('finish_reason', 'stop');
+      expect(result.choices[0]!.delta).toEqual({});
     });
 
     it('should return tool_calls finish_reason when hasToolCalls is true', () => {
@@ -264,7 +272,7 @@ describe('TransformerService', () => {
 
       const result = service.createFinalChunk('req-id', 'model', accumulator);
 
-      expect(result.choices[0].finish_reason).toBe('tool_calls');
+      expect(result.choices[0]!.finish_reason).toBe('tool_calls');
     });
   });
 });

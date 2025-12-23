@@ -1,10 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  OnModuleInit,
-  Inject,
-  forwardRef,
-} from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { QuotaService } from '../quota/quota.service';
@@ -49,7 +43,6 @@ export class AccountsService implements OnModuleInit {
 
   constructor(
     private readonly configService: ConfigService,
-    @Inject(forwardRef(() => QuotaService))
     private readonly quotaService: QuotaService,
   ) {
     this.COOLDOWN_DURATION_MS =
@@ -98,14 +91,30 @@ export class AccountsService implements OnModuleInit {
     });
   }
 
+  /**
+   * Checks if any accounts are configured and available.
+   *
+   * @returns True if at least one account is configured
+   */
   hasAccounts(): boolean {
     return this.accountStatesMap.size > 0;
   }
 
+  /**
+   * Gets the total number of configured accounts.
+   *
+   * @returns The count of all configured accounts
+   */
   getAccountCount(): number {
     return this.accountStatesMap.size;
   }
 
+  /**
+   * Gets all accounts that are ready to accept requests.
+   * Also expires cooldowns for accounts whose cooldown period has ended.
+   *
+   * @returns Array of account states that are ready for use
+   */
   getReadyAccounts(): AccountState[] {
     const now = Date.now();
 
@@ -126,6 +135,13 @@ export class AccountsService implements OnModuleInit {
     return this.accountsList.filter((s) => s.status === 'ready');
   }
 
+  /**
+   * Selects the next best account for a request using a scoring system.
+   * Considers quota availability, request count, and recency of use.
+   *
+   * @param modelName - Optional model name to consider for quota-based selection
+   * @returns The best available account or null if none are ready
+   */
   getNextAccount(modelName?: string): AccountState | null {
     const readyAccounts = this.getReadyAccounts();
 
@@ -172,7 +188,12 @@ export class AccountsService implements OnModuleInit {
     // sort by score descending
     scoredAccounts.sort((a, b) => b.score - a.score);
 
-    const selected = scoredAccounts[0].state;
+    const firstAccount = scoredAccounts[0];
+    if (!firstAccount) {
+      return null;
+    }
+
+    const selected = firstAccount.state;
 
     // update current index for legacy compatibility if needed
     this.currentIndex = this.accountsList.indexOf(selected);
@@ -180,14 +201,30 @@ export class AccountsService implements OnModuleInit {
     return selected;
   }
 
+  /**
+   * Retrieves an account by its ID.
+   *
+   * @param accountId - The unique account identifier
+   * @returns The account state or undefined if not found
+   */
   getAccountById(accountId: string): AccountState | undefined {
     return this.accountStatesMap.get(accountId);
   }
 
+  /**
+   * Gets all configured account IDs.
+   *
+   * @returns Array of all account IDs
+   */
   getAllAccountIds(): string[] {
     return Array.from(this.accountStatesMap.keys());
   }
 
+  /**
+   * Gets account info needed for quota status display.
+   *
+   * @returns Array of objects with account ID and email
+   */
   getAccountsForQuotaStatus(): Array<{ id: string; email: string }> {
     return this.accountsList.map((state) => ({
       id: state.id,
@@ -195,6 +232,12 @@ export class AccountsService implements OnModuleInit {
     }));
   }
 
+  /**
+   * Marks an account as being in cooldown due to rate limiting.
+   * Uses exponential backoff for consecutive failures.
+   *
+   * @param accountId - The account ID to mark as cooldown
+   */
   markCooldown(accountId: string): void {
     const state = this.accountStatesMap.get(accountId);
     if (state) {
@@ -213,6 +256,11 @@ export class AccountsService implements OnModuleInit {
     }
   }
 
+  /**
+   * Marks an account as having a persistent error.
+   *
+   * @param accountId - The account ID to mark as error
+   */
   markError(accountId: string): void {
     const state = this.accountStatesMap.get(accountId);
     if (state) {
@@ -224,6 +272,12 @@ export class AccountsService implements OnModuleInit {
     }
   }
 
+  /**
+   * Marks a successful request for an account.
+   * Resets consecutive error count and updates status if needed.
+   *
+   * @param accountId - The account ID that completed successfully
+   */
   markSuccess(accountId: string): void {
     const state = this.accountStatesMap.get(accountId);
     if (state) {
@@ -237,6 +291,12 @@ export class AccountsService implements OnModuleInit {
     }
   }
 
+  /**
+   * Adds a new account or updates an existing one by email.
+   *
+   * @param credential - The account credentials to add
+   * @returns Object containing account ID, number, and whether it was new
+   */
   addAccount(credential: AccountCredential): {
     id: string;
     accountNumber: number;
@@ -281,20 +341,36 @@ export class AccountsService implements OnModuleInit {
     return { id, accountNumber, isNew: true };
   }
 
-  getStatus(): AccountStatusResponse {
+  /**
+   * Gets the status of all accounts with optional credential information.
+   *
+   * @param includeCredentials - Whether to include full credentials and unmask emails
+   * @returns Account status response with all account information
+   */
+  getStatus(includeCredentials = false): AccountStatusResponse {
     const accounts: AccountPublicInfo[] = this.accountsList.map(
       (state, index) => {
-        const accountJson = JSON.stringify({
-          email: state.credential.email,
-          accessToken: state.credential.accessToken,
-          refreshToken: state.credential.refreshToken,
-          expiryDate: state.credential.expiryDate,
-        });
-        const envText = `ANTIGRAVITY_ACCOUNTS_${index + 1}='${accountJson}'`;
+        // Only include full credentials when explicitly requested
+        // This prevents accidental token exposure in logs and API responses
+        let envText: string | undefined;
+        if (includeCredentials) {
+          const accountJson = JSON.stringify({
+            email: state.credential.email,
+            accessToken: state.credential.accessToken,
+            refreshToken: state.credential.refreshToken,
+            expiryDate: state.credential.expiryDate,
+          });
+          envText = `ANTIGRAVITY_ACCOUNTS_${index + 1}='${accountJson}'`;
+        }
+
+        // Show full email when authenticated (includeCredentials), mask otherwise
+        const displayEmail = includeCredentials
+          ? state.credential.email
+          : this.maskEmail(state.credential.email);
 
         return {
           id: state.id,
-          email: state.credential.email,
+          email: displayEmail,
           status: state.status,
           cooldownUntil: state.cooldownUntil,
           lastUsed: state.lastUsed,
@@ -319,23 +395,42 @@ export class AccountsService implements OnModuleInit {
     };
   }
 
-  private maskEmail(email: string): string {
-    const [local, domain] = email.split('@');
-    if (!domain) return '***';
+  /**
+   * Masks an email address for safe display in logs and API responses.
+   * Example: "john.doe@gmail.com" -> "j******e@g***l.com"
+   */
+  maskEmail(email: string): string {
+    const parts = email.split('@');
+    const local = parts[0];
+    const domain = parts[1];
+    if (!local || !domain) return '***';
+
     const maskedLocal =
       local.length <= 2
         ? '*'.repeat(local.length)
         : local[0] + '*'.repeat(local.length - 2) + local[local.length - 1];
-    const [domainName, tld] = domain.split('.');
+
+    const domainParts = domain.split('.');
+    const domainName = domainParts[0];
+    const tld = domainParts.slice(1).join('.');
+
+    if (!domainName) return `${maskedLocal}@***`;
+
     const maskedDomain =
       domainName.length <= 2
         ? '*'.repeat(domainName.length)
         : domainName[0] +
           '*'.repeat(domainName.length - 2) +
           domainName[domainName.length - 1];
+
     return `${maskedLocal}@${maskedDomain}.${tld}`;
   }
 
+  /**
+   * Gets the earliest time when a cooldown account will become ready.
+   *
+   * @returns Timestamp in milliseconds or null if no accounts in cooldown
+   */
   getEarliestCooldownEnd(): number | null {
     const cooldownAccounts = this.accountsList.filter(
       (s) => s.status === 'cooldown' && s.cooldownUntil,
@@ -345,10 +440,23 @@ export class AccountsService implements OnModuleInit {
     return Math.min(...cooldownAccounts.map((s) => s.cooldownUntil!));
   }
 
+  /**
+   * Checks if an account's access token is expired or about to expire.
+   *
+   * @param state - The account state to check
+   * @returns True if the token needs refresh
+   */
   isTokenExpired(state: AccountState): boolean {
     return Date.now() + this.REFRESH_BUFFER_MS >= state.credential.expiryDate;
   }
 
+  /**
+   * Gets a valid access token for an account, refreshing if needed.
+   *
+   * @param state - The account state
+   * @returns Promise resolving to the access token
+   * @throws Error if token refresh fails
+   */
   async getAccessToken(state: AccountState): Promise<string> {
     if (this.isTokenExpired(state)) {
       await this.refreshToken(state);
@@ -356,6 +464,12 @@ export class AccountsService implements OnModuleInit {
     return state.credential.accessToken;
   }
 
+  /**
+   * Refreshes the access token for an account using the refresh token.
+   *
+   * @param state - The account state to refresh
+   * @throws Error if the refresh fails
+   */
   async refreshToken(state: AccountState): Promise<void> {
     this.logger.debug(
       `Refreshing token for account ${state.id} (${state.credential.email})...`,
@@ -399,6 +513,12 @@ export class AccountsService implements OnModuleInit {
     }
   }
 
+  /**
+   * Gets authorization headers for API requests.
+   *
+   * @param state - The account state
+   * @returns Promise resolving to headers object with Authorization and Content-Type
+   */
   async getAuthHeaders(state: AccountState): Promise<Record<string, string>> {
     const token = await this.getAccessToken(state);
     return {
@@ -407,6 +527,13 @@ export class AccountsService implements OnModuleInit {
     };
   }
 
+  /**
+   * Gets the Google Cloud project ID for an account.
+   * Discovers it automatically if not configured.
+   *
+   * @param state - The account state
+   * @returns Promise resolving to the project ID
+   */
   async getProjectId(state: AccountState): Promise<string> {
     if (state.credential.projectId) {
       return state.credential.projectId;

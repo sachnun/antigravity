@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosResponse } from 'axios';
 import { AccountsService } from '../accounts';
@@ -25,11 +25,10 @@ export interface OAuthResult {
 }
 
 @Injectable()
-export class OAuthService {
+export class OAuthService implements OnModuleInit {
   private readonly logger = new Logger(OAuthService.name);
-  private readonly CLIENT_ID =
-    '1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com';
-  private readonly CLIENT_SECRET = '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';
+  private readonly clientId: string;
+  private readonly clientSecret: string;
   private readonly TOKEN_URI = 'https://oauth2.googleapis.com/token';
   private readonly USER_INFO_URI =
     'https://www.googleapis.com/oauth2/v1/userinfo';
@@ -40,20 +39,50 @@ export class OAuthService {
     'https://www.googleapis.com/auth/cclog',
     'https://www.googleapis.com/auth/experimentsandconfigs',
   ];
-  private readonly REDIRECT_URI = 'http://localhost:3000/oauth/callback';
+  private readonly REDIRECT_URI: string;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly accountsService: AccountsService,
-  ) {}
+  ) {
+    this.clientId =
+      this.configService.get<string>('antigravity.clientId') || '';
+    this.clientSecret =
+      this.configService.get<string>('antigravity.clientSecret') || '';
+    const port = this.configService.get<number>('port') || 3000;
+    this.REDIRECT_URI = `http://localhost:${port}/oauth/callback`;
+  }
+
+  onModuleInit() {
+    this.validateCredentials();
+  }
+
+  private validateCredentials(): void {
+    if (!this.clientId || !this.clientSecret) {
+      this.logger.warn('='.repeat(60));
+      this.logger.warn('OAUTH CREDENTIALS NOT CONFIGURED');
+      this.logger.warn('='.repeat(60));
+      this.logger.warn(
+        'Set ANTIGRAVITY_CLIENT_ID and ANTIGRAVITY_CLIENT_SECRET',
+      );
+      this.logger.warn('in your environment variables to enable OAuth.');
+      this.logger.warn('='.repeat(60));
+    }
+  }
 
   getRedirectUri(): string {
     return this.REDIRECT_URI;
   }
 
   getAuthorizationUrl(): string {
+    if (!this.clientId) {
+      throw new Error(
+        'OAuth client ID not configured. Set ANTIGRAVITY_CLIENT_ID environment variable.',
+      );
+    }
+
     const params = new URLSearchParams({
-      client_id: this.CLIENT_ID,
+      client_id: this.clientId,
       redirect_uri: this.REDIRECT_URI,
       scope: this.SCOPES.join(' '),
       access_type: 'offline',
@@ -65,14 +94,20 @@ export class OAuthService {
   }
 
   async exchangeCodeForTokens(code: string): Promise<OAuthResult> {
+    if (!this.clientId || !this.clientSecret) {
+      throw new Error(
+        'OAuth credentials not configured. Set ANTIGRAVITY_CLIENT_ID and ANTIGRAVITY_CLIENT_SECRET environment variables.',
+      );
+    }
+
     this.logger.log('Exchanging authorization code for tokens...');
 
     const response: AxiosResponse<TokenResponse> = await axios.post(
       this.TOKEN_URI,
       new URLSearchParams({
         code,
-        client_id: this.CLIENT_ID,
-        client_secret: this.CLIENT_SECRET,
+        client_id: this.clientId,
+        client_secret: this.clientSecret,
         redirect_uri: this.REDIRECT_URI,
         grant_type: 'authorization_code',
       }),

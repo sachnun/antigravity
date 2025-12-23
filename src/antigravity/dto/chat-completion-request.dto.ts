@@ -12,7 +12,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 export class ContentPart {
   @ApiProperty({ enum: ['text', 'image_url'] })
   @IsString()
-  type: 'text' | 'image_url';
+  type!: 'text' | 'image_url';
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -27,14 +27,14 @@ export class ContentPart {
 export class ToolCall {
   @ApiProperty()
   @IsString()
-  id: string;
+  id!: string;
 
   @ApiProperty({ enum: ['function'] })
   @IsString()
-  type: 'function';
+  type!: 'function';
 
   @ApiProperty()
-  function: {
+  function!: {
     name: string;
     arguments: string;
   };
@@ -43,7 +43,7 @@ export class ToolCall {
 export class MessageDto {
   @ApiProperty({ enum: ['system', 'user', 'assistant', 'tool'] })
   @IsString()
-  role: 'system' | 'user' | 'assistant' | 'tool';
+  role!: 'system' | 'user' | 'assistant' | 'tool';
 
   @ApiPropertyOptional({ oneOf: [{ type: 'string' }, { type: 'array' }] })
   @IsOptional()
@@ -68,10 +68,10 @@ export class MessageDto {
 export class ToolDto {
   @ApiProperty({ enum: ['function'] })
   @IsString()
-  type: 'function';
+  type!: 'function';
 
   @ApiProperty()
-  function: {
+  function!: {
     name: string;
     description: string;
     parameters?: Record<string, unknown>;
@@ -79,15 +79,18 @@ export class ToolDto {
 }
 
 export class ChatCompletionRequestDto {
-  @ApiProperty({ example: 'claude-sonnet-4-5' })
+  @ApiProperty({
+    example: 'claude-sonnet-4-5',
+    description: 'The model to use for completion',
+  })
   @IsString()
-  model: string;
+  model!: string;
 
   @ApiProperty({ type: [MessageDto] })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => MessageDto)
-  messages: MessageDto[];
+  messages!: MessageDto[];
 
   @ApiPropertyOptional({ minimum: 0, maximum: 2, example: 1 })
   @IsOptional()

@@ -18,9 +18,212 @@ export class AppService {
     };
   }
 
+  getLoginPage(error?: string): string {
+    return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Antigravity - Login</title>
+    <style>
+        :root {
+          --bg-primary: #0a0a0a;
+          --bg-secondary: #141414;
+          --bg-tertiary: #1e1e1e;
+          --border-color: #2a2a2a;
+          --text-primary: #f0f0f0;
+          --text-secondary: #a0a0a0;
+          --accent-green: #22c55e;
+          --accent-blue: #3b82f6;
+          --accent-red: #ef4444;
+          --radius-md: 10px;
+          --radius-lg: 16px;
+        }
+
+        * {
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
+        }
+
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          background: var(--bg-primary);
+          color: var(--text-primary);
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .login-container {
+          background: var(--bg-secondary);
+          border: 1px solid var(--border-color);
+          border-radius: var(--radius-lg);
+          padding: 48px;
+          width: 100%;
+          max-width: 420px;
+          text-align: center;
+        }
+
+        .logo-icon {
+          width: 64px;
+          height: 64px;
+          background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));
+          border-radius: var(--radius-md);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 24px;
+        }
+
+        .logo-icon svg {
+          width: 36px;
+          height: 36px;
+          color: white;
+        }
+
+        h1 {
+          font-size: 1.5rem;
+          font-weight: 700;
+          margin-bottom: 8px;
+        }
+
+        .subtitle {
+          color: var(--text-secondary);
+          font-size: 0.9rem;
+          margin-bottom: 32px;
+        }
+
+        .form-group {
+          margin-bottom: 20px;
+          text-align: left;
+        }
+
+        label {
+          display: block;
+          font-size: 0.85rem;
+          font-weight: 600;
+          color: var(--text-secondary);
+          margin-bottom: 8px;
+        }
+
+        input[type="password"] {
+          width: 100%;
+          padding: 12px 16px;
+          font-size: 1rem;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-color);
+          border-radius: var(--radius-md);
+          color: var(--text-primary);
+          transition: border-color 0.2s;
+        }
+
+        input[type="password"]:focus {
+          outline: none;
+          border-color: var(--accent-blue);
+        }
+
+        .btn {
+          width: 100%;
+          padding: 12px 24px;
+          font-size: 1rem;
+          font-weight: 600;
+          background: var(--accent-blue);
+          color: white;
+          border: none;
+          border-radius: var(--radius-md);
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .btn:hover {
+          background: #2563eb;
+        }
+
+        .btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .error-message {
+          background: rgba(239, 68, 68, 0.1);
+          border: 1px solid rgba(239, 68, 68, 0.3);
+          color: var(--accent-red);
+          padding: 12px 16px;
+          border-radius: var(--radius-md);
+          margin-bottom: 20px;
+          font-size: 0.9rem;
+        }
+
+        .hint {
+          margin-top: 24px;
+          font-size: 0.8rem;
+          color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+        </div>
+        <h1>Antigravity</h1>
+        <p class="subtitle">Enter your API key to access the dashboard</p>
+        
+        ${error ? `<div class="error-message">${error}</div>` : ''}
+        
+        <form id="login-form">
+            <div class="form-group">
+                <label for="password">API Key (PROXY_API_KEY)</label>
+                <input type="password" id="password" name="password" placeholder="Enter your API key" required autofocus>
+            </div>
+            <button type="submit" class="btn" id="login-btn">Login</button>
+        </form>
+        
+        <p class="hint">This is the PROXY_API_KEY configured in your .env file</p>
+    </div>
+
+    <script>
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('login-btn');
+            const password = document.getElementById('password').value;
+            
+            btn.disabled = true;
+            btn.textContent = 'Logging in...';
+            
+            try {
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    window.location.href = '/';
+                } else {
+                    window.location.href = '/login?error=' + encodeURIComponent(data.error || 'Invalid password');
+                }
+            } catch (err) {
+                window.location.href = '/login?error=' + encodeURIComponent('Login failed');
+            }
+        });
+    </script>
+</body>
+</html>
+    `;
+  }
+
   getDashboard(
     status: AccountStatusResponse,
     quotaStatus: QuotaStatusResponse,
+    showLogout = false,
   ): string {
     const accountsRows = status.accounts
       .map((acc, index) => {
@@ -1180,6 +1383,18 @@ export class AppService {
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
                     </svg>
                 </button>
+                ${
+                  showLogout
+                    ? `
+                <a href="/logout" class="btn btn-ghost" title="Logout">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                    </svg>
+                    Logout
+                </a>
+                `
+                    : ''
+                }
                 <div class="system-status">
                     <div class="status-dot"></div>
                     <span class="status-text">Operational</span>
@@ -1362,8 +1577,12 @@ export class AppService {
                             },
                           };
 
-                          const colors =
-                            ownerColors[owner] || ownerColors.unknown;
+                          const colors = ownerColors[owner] ??
+                            ownerColors['unknown'] ?? {
+                              bg: '#000',
+                              border: '#333',
+                              text: '#fff',
+                            };
 
                           return `
                             <div class="model-card" style="animation-delay: ${index * 0.05}s">
